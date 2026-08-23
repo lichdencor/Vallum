@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Escaneo rápido de seguridad con Trivy para pre-commit.
-# Si no está instalado: avisa y continúa — la enforcement dura vive en
-# `clojure -M:harness all` y en CI.
+# Quick Trivy security scan for pre-commit.
+# If not installed: warn and continue — hard enforcement lives in
+# `clojure -M:harness all` and CI.
 command -v trivy >/dev/null 2>&1 || [ -x "${HOME}/.local/bin/trivy" ] || {
-  echo "⏭️  trivy no instalado — saltando (instalar: bin/install-trivy.sh)"
+  echo "⏭️  trivy not installed — skipping (install: bin/install-trivy.sh)"
   exit 0
 }
 

@@ -1,132 +1,132 @@
-# Vallum — Harness de calidad
+# Vallum — Quality harness
 
-> Suite única de verificación para todo el source code: lint, formato,
-> seguridad (Trivy), convenciones de arquitectura y tests. Ejecutable desde
-> REPL, CLI o pre-commit con los mismos checks y los mismos resultados.
+> Single verification suite for all source code: lint, formatting,
+> security (Trivy), architecture conventions and tests. Executable from
+> REPL, CLI or pre-commit with the same checks and the same results.
 >
-> Complementa a `ARCHITECTURE.md` (§4 reglas que este harness enforcea,
-> §6 estrategia de pruebas) y a `PROPOSAL.md` §5 (invariantes).
+> Complements `ARCHITECTURE.md` (§4 rules this harness enforces,
+> §6 testing strategy) and `PROPOSAL.md` §5 (invariants).
 
 ---
 
-## 1. Principios
+## 1. Principles
 
-1. **Los checks devuelven datos, no imprimen.** Cada check es una función
-   que produce `{:id :status :summary :details}`. El reporteo es una capa
-   aparte (`print-report!`). Así el REPL consume resultados programáticamente
-   y el CLI los formatea.
-2. **Gating por fase.** El registro de checks declara desde qué hito aplica
-   cada uno; la fase vive en `vallum.system/version` (`:phase :M0` hoy).
-   Lo que llega en M2 hoy se reporta como `⏭️ skip`, nunca como error ni
-   como silencio.
-3. **Degradación elegante.** Si Trivy no está instalado, el check salta con
-   instrucciones en vez de romper la suite. La enforcement dura vive en CI.
-4. **Una sola fuente de verdad.** REPL, CLI, pre-commit y (futuro) CI corren
-   exactamente el mismo registro: `vallum.harness/registry`.
-5. **Sin binarios mágicos.** clj-kondo y cljfmt son dependencias Maven
-   versionadas en `deps.edn` — no hace falta instalar nada global.
+1. **Checks return data, they don't print.** Each check is a function
+   that produces `{:id :status :summary :details}`. Reporting is a separate
+   layer (`print-report!`). This way the REPL consumes results
+   programmatically and the CLI formats them.
+2. **Milestone gating.** The check registry declares from which milestone
+   each one applies; the phase lives in `vallum.system/version`
+   (`:phase :M0` today). What arrives in M2 today is reported as `⏭️ skip`,
+   never as an error nor as silence.
+3. **Graceful degradation.** If Trivy is not installed, the check skips with
+   instructions instead of breaking the suite. Hard enforcement lives in CI.
+4. **Single source of truth.** REPL, CLI, pre-commit and (future) CI run
+   exactly the same registry: `vallum.harness/registry`.
+5. **No magic binaries.** clj-kondo and cljfmt are versioned Maven
+   dependencies in `deps.edn` — no global installation needed.
 
-## 2. Uso
+## 2. Usage
 
-### REPL (flujo diario)
+### REPL (daily flow)
 
 ```bash
-clojure -M:repl        # rebel-readline + dev/user.clj precargado
+clojure -M:repl        # rebel-readline + dev/user.clj preloaded
 ```
 
 ```clojure
-(refresh)                       ; recarga código (tools.namespace)
-(h/run-fast!)                   ; lint + formato + arquitectura + tests
-(h/run-checks)                  ; datos crudos de todos los checks aplicables
-(h/run-one :lint/kondo)         ; un check puntual
-(h/run-checks [:security])      ; subconjunto por prefijo (:security/trivy-*)
-(run-tests)                     ; suite completa vía vallum.run-all
+(refresh)                       ; reload code (tools.namespace)
+(h/run-fast!)                   ; lint + format + architecture + tests
+(h/run-checks)                  ; raw data of all applicable checks
+(h/run-one :lint/kondo)         ; a single check
+(h/run-checks [:security])      ; subset by prefix (:security/trivy-*)
+(run-tests)                     ; full suite via vallum.run-all
 ```
 
 ### CLI
 
 ```bash
-clojure -M:harness all        # suite completa aplicable a la fase actual
-clojure -M:harness fast       # lo mismo que corre el pre-commit
-clojure -M:harness security   # solo Trivy
-clojure -M:harness list       # checks registrados y sus hitos
-clojure -M:test               # solo la suite de tests (exit 0/1)
+clojure -M:harness all        # full suite applicable to the current phase
+clojure -M:harness fast       # the same thing the pre-commit runs
+clojure -M:harness security   # Trivy only
+clojure -M:harness list       # registered checks and their milestones
+clojure -M:test               # only the test suite (exit 0/1)
 ```
 
-## 3. Los checks
+## 3. The checks
 
-| ID | Qué hace | Herramienta | Hito |
+| ID | What it does | Tool | Milestone |
 |---|---|---|---|
-| `:lint/kondo` | Análisis estático de src y test | clj-kondo (vía deps.edn) | M0 |
-| `:format/cljfmt` | Verifica formato canónico | cljfmt (vía deps.edn) | M0 |
-| `:security/trivy-fs` | Vulnerabilidades HIGH/CRITICAL, misconfig y secrets | Trivy binario | M0 |
-| `:security/trivy-config` | Misconfigurations de IaC (no necesita DB) | Trivy binario | M0 |
-| `:conventions/architecture` | Reglas de dependencia, pureza y docs (ver §5) | clojure.test propio | M0 |
-| `:tests/unit` | Toda la suite bajo `test/` descubierta automáticamente | vallum.run-all | M0 |
-| `:tests/generative` | I0–I8 bajo inputs arbitrarios (test.check) | test/vallum/generative/ | **M2** |
-| `:tests/adversarial` | Suites de ataque al sandbox | test/vallum/adversarial/ | **M2** |
+| `:lint/kondo` | Static analysis of src and test | clj-kondo (via deps.edn) | M0 |
+| `:format/cljfmt` | Verifies canonical formatting | cljfmt (via deps.edn) | M0 |
+| `:security/trivy-fs` | HIGH/CRITICAL vulnerabilities, misconfig and secrets | Trivy binary | M0 |
+| `:security/trivy-config` | IaC misconfigurations (no DB needed) | Trivy binary | M0 |
+| `:conventions/architecture` | Dependency, purity and docs rules (see §5) | own clojure.test | M0 |
+| `:tests/unit` | Whole suite under `test/`, auto-discovered | vallum.run-all | M0 |
+| `:tests/generative` | I0–I8 under arbitrary inputs (test.check) | test/vallum/generative/ | **M2** |
+| `:tests/adversarial` | Attack suites against the sandbox | test/vallum/adversarial/ | **M2** |
 
-Las suites M2 no necesitan tocar el harness: al crear archivos en
-`test/vallum/generative/` o `test/vallum/adversarial/` se descubren solos
-(cuando `:phase` alcance `:M2` pasan de `skip` a ejecutarse).
+The M2 suites don't need to touch the harness: creating files in
+`test/vallum/generative/` or `test/vallum/adversarial/` gets them discovered
+automatically (when `:phase` reaches `:M2` they go from `skip` to running).
 
-## 4. Pre-commit — feedback instantáneo
+## 4. Pre-commit — instant feedback
 
-Dos caminos equivalentes sobre la misma fuente (`bin/hooks/`):
+Two equivalent paths over the same source (`bin/hooks/`):
 
 ```bash
-# A) Git puro, sin Python ni dependencias (recomendado):
+# A) Plain git, no Python nor dependencies (recommended):
 ./bin/install-git-hooks.sh
 
-# B) pre-commit de Python, si ya lo tenés:
+# B) Python's pre-commit, if you already have it:
 pip install pre-commit && pre-commit install && pre-commit install --hook-type commit-msg
 ```
 
-Qué corre cada commit:
-- **pre-commit:** `clojure -M:harness fast` → kondo + cljfmt + arquitectura
-  + tests (~10 s). Falla ⇒ commit bloqueado con feedback inmediato.
-- **trivy.sh:** escaneo rápido si el binario existe; si no, avisa y continúa.
-  Instalarlo con `./bin/install-trivy.sh` (queda en `~/.local/bin`, sin sudo).
+What each commit runs:
+- **pre-commit:** `clojure -M:harness fast` → kondo + cljfmt + architecture
+  + tests (~10 s). Failure ⇒ commit blocked with immediate feedback.
+- **trivy.sh:** quick scan if the binary exists; if not, warns and continues.
+  Install it with `./bin/install-trivy.sh` (lands in `~/.local/bin`, no sudo).
 - **commit-msg:** Conventional Commits
   (`feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert[(scope)]!:`),
-  consistente con el historial del repo.
+  consistent with the repo history.
 
-Para saltar el hook una vez (excepciones conscientes):
-`git commit --no-verify`. La suite completa vuelve a correr en CI.
+To skip the hook once (conscious exceptions):
+`git commit --no-verify`. The full suite runs again in CI.
 
-## 5. Convenciones enforceadas (test/vallum/architecture_test.clj)
+## 5. Enforced conventions (test/vallum/architecture_test.clj)
 
-Codificación ejecutable de `ARCHITECTURE.md` §2/§4:
+Executable encoding of `ARCHITECTURE.md` §2/§4:
 
-| Test | Regla |
+| Test | Rule |
 |---|---|
-| `namespaces-bajo-vallum-con-docstring` | Todo ns vive en `vallum.*` y documenta su responsabilidad |
-| `modulos-de-dominio-registrados-en-docs` | Todo módulo figura en el mapa §2 y tiene nivel en el grafo |
-| `dependencias-descendentes` | Solo se requiere hacia abajo/lateral (§4); nadie toca al harness |
-| `bridge-nunca-toca-runtime` | Los bridges solo emiten EDN hacia validate |
-| `capas-puras-son-deterministas` | dsl/ir/compile/validate/emit/manifest/audit: sin I/O, sin tiempo, sin azar (**I0/I4**) |
-| `io-solo-en-la-frontera` | I/O prohibida fuera de `{runtime, ingest, cli, harness}` (§4) |
+| `namespaces-under-vallum-with-docstring` | Every ns lives in `vallum.*` and documents its responsibility |
+| `domain-modules-registered-in-docs` | Every module appears in the §2 map and has a level in the graph |
+| `downward-dependencies` | Only requires downward/sideways (§4); nobody touches the harness |
+| `bridge-never-touches-runtime` | Bridges only emit EDN towards validate |
+| `pure-layers-are-deterministic` | dsl/ir/compile/validate/emit/manifest/audit: no I/O, no time, no randomness (**I0/I4**) |
+| `io-only-at-the-frontier` | I/O forbidden outside `{runtime, ingest, cli, harness}` (§4) |
 
-**Al agregar un módulo nuevo:** crear `src/vallum/<modulo>/…` con docstring →
-agregarlo a `tiers` en `architecture_test.clj` → agregarlo a la tabla §2 de
-`ARCHITECTURE.md`. Los tests te van a exigir los tres pasos.
+**When adding a new module:** create `src/vallum/<module>/…` with docstring →
+add it to `tiers` in `architecture_test.clj` → add it to table §2 of
+`ARCHITECTURE.md`. The tests will demand all three steps.
 
-## 6. Agregar un check al registro
+## 6. Adding a check to the registry
 
-1. Escribir la función en `vallum.harness`: sin printing, devuelve
-   `(result <id> ::pass|::fail|::skip "resumen" "detalles-opcionales")`.
-2. Registrarla en `registry` con su `:label` y `:milestone` (si aplica).
-3. Listo: REPL, CLI (`list`, `all`) y pre-commit la heredan.
-4. Agregar meta-test en `test/vallum/harness_test.clj` si introduce lógica
-   nueva pura (selección, semántica de estados, etc.).
+1. Write the function in `vallum.harness`: no printing, returns
+   `(result <id> ::pass|::fail|::skip "summary" "optional-details")`.
+2. Register it in `registry` with its `:label` and `:milestone` (if any).
+3. Done: REPL, CLI (`list`, `all`) and pre-commit inherit it.
+4. Add a meta-test in `test/vallum/harness_test.clj` if it introduces new
+   pure logic (selection, state semantics, etc.).
 
-## 7. Estado y roadmap del harness
+## 7. Harness status and roadmap
 
-- [x] M0 — registro, gating por fase, kondo/cljfmt vía deps.edn, Trivy con
-      degradación elegante, arquitectura/convenciones, runner unificado,
-      hooks git + pre-commit config.
-- [ ] M2 — activar suites generativa y adversarial (auto-descubiertas);
-      job de CI que corra `clojure -M:harness all` (+ build nativo, §7.1
-      de PROPOSAL).
-- [ ] M4+ — checks de drift entre política declarada y fixtures de estado
-      vivo cuando existan runtime e ingest.
+- [x] M0 — registry, milestone gating, kondo/cljfmt via deps.edn, Trivy with
+      graceful degradation, architecture/conventions, unified runner,
+      git hooks + pre-commit config.
+- [ ] M2 — activate generative and adversarial suites (auto-discovered);
+      CI job that runs `clojure -M:harness all` (+ native build, §7.1
+      of PROPOSAL).
+- [ ] M4+ — drift checks between declared policy and live-state fixtures
+      when runtime and ingest exist.

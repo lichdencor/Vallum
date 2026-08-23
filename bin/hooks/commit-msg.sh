@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Commit-msg: convención Conventional Commits (matching el historial del repo).
-#   feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert[(scope)]!: descripción
+# Commit-msg: Conventional Commits convention (matching repo history).
+#   feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert[(scope)]!: description
 set -euo pipefail
 
 file="$1"
@@ -10,17 +10,17 @@ regex='^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([a-z0-9
 
 if ! [[ "$head_line" =~ $regex ]]; then
   cat >&2 <<EOF
-✖ mensaje de commit no conforme a la convención:
+✖ commit message does not follow the convention:
 
     ${head_line}
 
-Formato esperado:
-  <tipo>[(<scope>)][!]: <descripción (máx 72 chars)>
+Expected format:
+  <type>[(<scope>)][!]: <description (max 72 chars)>
 
-Tipos: feat fix docs style refactor perf test build ci chore revert
-Ejemplos:
-  feat(compiler): valida zonas antes de emitir IR
-  docs: arquitectura high-level
+Types: feat fix docs style refactor perf test build ci chore revert
+Examples:
+  feat(compiler): validate zones before emitting IR
+  docs: high-level architecture
 EOF
   exit 1
 fi

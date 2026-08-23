@@ -1,45 +1,45 @@
 (ns vallum.architecture-test
-  "Reglas de arquitectura y convenciones como tests ejecutables.
+  "Architecture and convention rules as executable tests.
 
-  Codifica lo declarado en docs/ARCHITECTURE.md:
-  - §2: todo módulo de dominio debe estar registrado en el mapa de módulos.
-  - §4: dependencias estrictamente descendentes; capas puras sin I/O ni
-    fuentes de no-determinismo (I4); I/O solo en la frontera (runtime,
-    ingest, cli); bridge.* jamás toca runtime.
-  - Convenciones: namespaces bajo vallum. y con docstring.
+  Encodes what docs/ARCHITECTURE.md declares:
+  - §2: every domain module must be registered in the module map.
+  - §4: strictly downward dependencies; pure layers without I/O nor
+    non-determinism sources (I4); I/O only at the frontier (runtime,
+    ingest, cli); bridge.* never touches runtime.
+  - Conventions: namespaces under vallum. with a docstring.
 
-  Si agregás un módulo nuevo, registralo en `tiers` y en ARCHITECTURE.md §2 —
-  este test te lo va a exigir."
+  If you add a new module, register it in `tiers` and in ARCHITECTURE.md §2 —
+  this test will demand it."
   (:require [clojure.java.io :as io]
             [clojure.string :as str]
             [clojure.test :refer [deftest is testing]])
   (:import (java.io PushbackReader InputStreamReader FileInputStream)))
 
-;; ---- Lectura de fuentes -----------------------------------------------------
+;; ---- Source reading -----------------------------------------------------
 
 (defn- project-file
   [^String path]
   (io/file (System/getProperty "user.dir") path))
 
 (defn- src-files
-  "Todos los .clj/.cljc bajo src/vallum/."
+  "All .clj/.cljc under src/vallum/."
   []
   (->> (file-seq (project-file "src/vallum"))
        (filter #(.isFile ^java.io.File %))
        (filter #(re-matches #".+\.cljc?" (.getName ^java.io.File %)))))
 
 (defn- read-first-form
-  "Lee la primera forma del archivo (la declaración ns). ::ilegible si falla."
+  "Reads the first form of the file (the ns declaration). ::unreadable on failure."
   [^java.io.File f]
   (try
     (with-open [in (PushbackReader. (InputStreamReader. (FileInputStream. f) "UTF-8"))]
       (binding [*read-eval* false]
         (read in)))
     (catch Exception _
-      ::ilegible)))
+      ::unreadable)))
 
 (defn- require-symbols
-  "Símbolos lib de una cláusula (:require ...), resolviendo prefix lists."
+  "Lib symbols of a (:require ...) clause, resolving prefix lists."
   [clause]
   (->> (rest clause)
        (mapcat
@@ -59,7 +59,7 @@
        (remove nil?)))
 
 (defn- ns-info
-  "Extrae {:name :doc :requires} de una declaración ns. nil si no es ns."
+  "Extracts {:name :doc :requires} from an ns declaration. nil if not an ns."
   [form]
   (when (and (seq? form) (= 'ns (first form)))
     (let [[_ nombre & cuerpo] form
@@ -72,24 +72,24 @@
                        (set))})))
 
 (defn- sources
-  "[{:file :info}] de todo src/vallum/, ordenado."
+  "[{:file :info}] for all src/vallum/, sorted."
   []
   (->> (src-files)
        (sort-by #(.getPath ^java.io.File %))
        (mapv (fn [f] {:file f :info (some-> (read-first-form f) ns-info)}))))
 
 (defn- module-of
-  "'vallum.emit.nft' => 'emit.nft'. nil si no está bajo vallum."
+  "'vallum.emit.nft' => 'emit.nft'. nil if not under vallum."
   [ns-sym]
   (let [s (str ns-sym)]
     (when (str/starts-with? s "vallum.")
       (symbol (subs s (count "vallum."))))))
 
-;; ---- Mapa de capas (docs/ARCHITECTURE.md §2 y §4) ---------------------------
+;; ---- Layer map (docs/ARCHITECTURE.md §2 and §4) ---------------------------
 
 (def ^:private tiers
-  "Nivel de cada módulo de dominio. Menor = más abajo en la pila.
-  Solo puede requerirse hacia abajo o lateralmente dentro del mismo nivel."
+  "Level of each domain module. Lower = lower in the stack.
+  You may only require downward or sideways within the same level."
   '{dsl             1
     ir              1
     compile         2
@@ -105,20 +105,20 @@
     cli             8})
 
 (def ^:private infra-modules
-  "Namespaces de infraestructura: fuera del grafo de capas de dominio.
-  system es metadatos puros; harness es el orquestador (nivel superior)."
+  "Infrastructure namespaces: outside the domain layer graph.
+  system is pure metadata; harness is the orchestrator (top level)."
   '#{system harness})
 
 (def ^:private pure-modules
-  "Capas sin I/O, sin tiempo, sin azar: determinismo total (I4)."
+  "Layers without I/O, without time, without randomness: full determinism (I4)."
   '#{dsl ir compile validate emit.nft manifest audit})
 
 (def ^:private io-frontier
-  "Únicos módulos autorizados a tocar el mundo exterior (§4: solo runtime
-  habla con nftables/archivos/red; ingest lee el canal NDJSON curado)."
+  "Only modules allowed to touch the outside world (§4: only runtime talks
+  to nftables/state files/network; ingest reads the curated NDJSON channel)."
   '#{runtime ingest cli harness})
 
-;; ---- Patrones prohibidos ----------------------------------------------------
+;; ---- Forbidden patterns ----------------------------------------------------
 
 (def ^:private io-pattern
   "(clojure\\.java\\.(io|shell|browse)|java\\.nio\\.file|java\\.io\\.(File|Reader|Writer|InputStream|OutputStream)|\\b(slurp|spit|line-seq)\\b)")
@@ -131,9 +131,9 @@
   (contains? modules (some-> info :nombre module-of)))
 
 (defn- offending-files
-  "Archivos cuyo texto matchea algún patrón.
-  Con :include escanea solo los módulos listados (ej: capas puras);
-  con :exclude escanea todo menos ellos (ej: fuera de la frontera I/O)."
+  "Files whose text matches any pattern.
+   With :include scans only the listed modules (e.g. pure layers);
+   with :exclude scans everything except them (e.g. outside the I/O frontier)."
   ([pattern modules] (offending-files pattern modules :exclude))
   ([pattern modules mode]
    (let [in-scope? (case mode
@@ -147,16 +147,16 @@
 
 ;; ---- Tests ------------------------------------------------------------------
 
-(deftest namespaces-bajo-vallum-con-docstring
+(deftest namespaces-under-vallum-with-docstring
   (doseq [{:keys [file info]} (sources)]
     (testing (str file)
-      (is (some? info) "el primer form debe ser (ns ...)")
+      (is (some? info) "the first form must be (ns ...)")
       (when info
-        (is (str/starts-with? (str (:nombre info)) "vallum.") "namespace fuera de vallum.*")
-        (is (string? (:doc info)) "todo namespace lleva docstring")))))
+        (is (str/starts-with? (str (:nombre info)) "vallum.") "namespace outside vallum.*")
+        (is (string? (:doc info)) "every namespace carries a docstring")))))
 
-;; Cada módulo de dominio debe figurar en el mapa de módulos (ARCHITECTURE.md §2).
-(deftest modulos-de-dominio-registrados-en-docs
+;; Every domain module must appear in the module map (ARCHITECTURE.md §2).
+(deftest domain-modules-registered-in-docs
   (let [md (slurp (project-file "docs/ARCHITECTURE.md"))
         domain (->> (sources)
                     (map #(some-> % :info :nombre module-of))
@@ -165,23 +165,23 @@
                     (distinct))]
     (doseq [m domain]
       (is (str/includes? md (str "`" m "`"))
-          (str "módulo `" m "` no está en docs/ARCHITECTURE.md §2 — registralo"))))
+          (str "module `" m "` not in docs/ARCHITECTURE.md §2 — register it"))))
 
   (doseq [{:keys [file info]} (sources)]
     (let [m (some-> info :nombre module-of)]
       (when (and m (not (contains? infra-modules m)))
         (is (contains? tiers m)
-            (str "módulo `" m "` sin nivel en el mapa de capas de este test ("
+            (str "module `" m "` without a level in this test's layer map ("
                  (.getPath ^java.io.File file) ")"))))))
 
-;; Las capas solo conocen capas inferiores o laterales del mismo nivel (§4).
-(deftest dependencias-descendentes
+;; Layers only know lower layers or sideways within the same level (§4).
+(deftest downward-dependencies
   (doseq [{:keys [file info]} (sources)
           :when info
           :let [mod (module-of (:nombre info))]]
     (testing (str (.getPath ^java.io.File file))
       (is (not (contains? (:requires info) 'vallum.harness))
-          "nadie debajo del harness puede requerirlo")
+          "nobody below the harness may require it")
       (doseq [req (:requires info)
               :when (str/starts-with? (str req) "vallum.")
               :let [dep (module-of req)]]
@@ -190,30 +190,30 @@
           (contains? infra-modules mod) nil
           :else (do
                   (is (contains? tiers dep)
-                      (str "requiere módulo no registrado: " dep))
+                      (str "requires unregistered module: " dep))
                   (is (contains? tiers mod)
-                      (str "módulo propio no registrado: " mod))
+                      (str "own module unregistered: " mod))
                   (when (and (contains? tiers dep) (contains? tiers mod))
                     (is (<= (get tiers dep) (get tiers mod))
-                        (str mod " (nivel " (get tiers mod) ") no puede depender de "
-                             dep " (nivel " (get tiers dep) ") — ver §4")))))))))
+                        (str mod " (level " (get tiers mod) ") cannot depend on "
+                             dep " (level " (get tiers dep) ") — see §4")))))))))
 
-;; Los bridges solo emiten EDN hacia validate; jamás llaman al runtime (§4).
-(deftest bridge-nunca-toca-runtime
+;; Bridges only emit EDN towards validate; they never call runtime (§4).
+(deftest bridge-never-touches-runtime
   (doseq [{:keys [file info]} (sources)
           :when (and info (str/starts-with? (str (module-of (:nombre info))) "bridge."))]
     (is (not (contains? (:requires info) 'vallum.runtime))
-        (str (.getPath ^java.io.File file) ": bridge requiere runtime — prohibido"))))
+        (str (.getPath ^java.io.File file) ": bridge requires runtime — forbidden"))))
 
-;; Pure layers: nada de I/O ni fuentes de no-determinismo (I0/I4).
-(deftest capas-puras-son-deterministas
+;; Pure layers: no I/O nor non-determinism sources (I0/I4).
+(deftest pure-layers-are-deterministic
   (let [violations-io  (offending-files io-pattern pure-modules :include)
         violations-det (offending-files nondet-pattern pure-modules :include)]
-    (is (empty? violations-io) (str "I/O en capa pura: " (pr-str violations-io)))
-    (is (empty? violations-det) (str "no-determinismo en capa pura: " (pr-str violations-det)))))
+    (is (empty? violations-io) (str "I/O in pure layer: " (pr-str violations-io)))
+    (is (empty? violations-det) (str "non-determinism in pure layer: " (pr-str violations-det)))))
 
-;; Fuera de {runtime, ingest, cli, harness} no existe I/O (§4).
-(deftest io-solo-en-la-frontera
+;; Outside {runtime, ingest, cli, harness} there is no I/O (§4).
+(deftest io-only-at-the-frontier
   (let [violations (offending-files io-pattern io-frontier)]
     (is (empty? violations)
-        (str "I/O fuera de la frontera: " (pr-str violations)))))
+        (str "I/O outside the frontier: " (pr-str violations)))))

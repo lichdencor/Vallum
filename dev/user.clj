@@ -1,27 +1,27 @@
 (ns user
-  "Utilidades de desarrollo, cargadas automáticamente en `clojure -M:repl`.
+  "Development utilities, automatically loaded in `clojure -M:repl`.
 
-  El flujo típico: editar código → (refresh) → correr checks → repetir.
-  Todo el feedback del proyecto vive a un llamado de distancia."
+  The typical flow: edit code → (refresh) → run checks → repeat.
+  All project feedback is one call away."
   (:require [clojure.tools.namespace.repl :refer [refresh]]
             [vallum.harness :as h]
             [vallum.system :as system]))
 
 (defn run-tests
-  "Suite completa de tests en este proceso."
+  "Full test suite in this process."
   []
   (require 'vallum.run-all)
   (@(resolve 'vallum.run-all/run-suite)))
 
 (comment
- ;; ciclo de desarrollo:
+ ;; development cycle:
  (refresh)
  (run-tests)
 
- ;; feedback de calidad:
- (h/run-fast!)                 ; lint + formato + arquitectura + tests
- (h/run-checks)                ; datos crudos de todos los checks aplicables
+ ;; quality feedback:
+ (h/run-fast!)                 ; lint + formatting + architecture + tests
+ (h/run-checks)                ; raw data of all applicable checks
  (h/run-one :lint/kondo)
 
- ;; metadatos:
+ ;; metadata:
  system/version)

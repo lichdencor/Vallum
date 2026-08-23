@@ -1,16 +1,16 @@
 (ns vallum.system-test
-  "Contrato mínimo del namespace de metadatos del sistema."
+  "Minimal contract of the system metadata namespace."
   (:require [clojure.test :refer [deftest is]]
             [vallum.system :as system]))
 
-(deftest version-es-un-map-completo
+(deftest version-is-a-complete-map
   (is (map? system/version))
   (doseq [k [:name :major :minor :phase]]
-    (is (contains? system/version k) (str "falta la clave " k))))
+    (is (contains? system/version k) (str "missing key " k))))
 
-(deftest fase-dentro-de-los-hitos-documentados
+(deftest phase-within-documented-milestones
   (is (contains? #{:M0 :M1 :M2 :M3 :M4 :M5} (:phase system/version))
-      "la fase debe ser un hito M0–M5 de docs/PROPOSAL.md §8"))
+      "the phase must be an M0–M5 milestone from docs/PROPOSAL.md §8"))
 
-(deftest nombre-del-proyecto
+(deftest project-name
   (is (= "vallum" (:name system/version))))

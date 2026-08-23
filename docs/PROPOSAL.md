@@ -1,178 +1,177 @@
-# Vallum — Compilador de políticas de firewall con sandbox para agentes IA
+# Vallum — Firewall policy compiler with a sandbox for AI agents
 
-> *Vallum* (latín): muralla, empalizada defensiva romana.
+> *Vallum* (Latin): wall, Roman defensive palisade.
 
-**Estado:** Propuesta v0.3 — aprobada tras review externo. Planning de
-arquitectura en `ARCHITECTURE.md`. Sin código todavía.
+**Status:** Proposal v0.3 — approved after external review. Architecture
+planning in `ARCHITECTURE.md`. No code yet.
 
-**Disciplina de alcance:** v1 = M0–M5 y nada más. Los backends pf/Forti/Cisco
-y modos de ingesta adicionales quedan congelados hasta completar M5.
+**Scope discipline:** v1 = M0–M5 and nothing more. The pf/Forti/Cisco backends
+and additional ingestion modes stay frozen until M5 is complete.
 
 ---
 
-## 1. Pitch (2 líneas)
+## 1. Pitch (2 lines)
 
-Un DSL en Clojure que compila políticas de firewall de alto nivel a reglas
-**validadas y reproducibles**, y un formato de datos cerrado por el cual un
-agente IA (**cualquier LLM**, vía puente multi-proveedor) puede **responder a
-incidentes** sin poder jamás salirse del campo de acción definido por el
-compilador.
+A Clojure DSL that compiles high-level firewall policies into **validated,
+reproducible rules**, and a closed data format through which an AI agent
+(**any LLM**, via a multi-provider bridge) can **respond to incidents**
+without ever being able to step outside the field of action defined by the
+compiler.
 
-**Objetivo primario:** Linux + nftables. **Evolución diseñada desde día 1:**
-backends para pf (BSD) y, más adelante, plataformas API-centradas
-(Fortinet, Cisco) mediante una representación intermedia neutra.
+**Primary target:** Linux + nftables. **Evolution designed from day 1:**
+backends for pf (BSD) and later API-centric platforms (Fortinet, Cisco)
+through a neutral intermediate representation.
 
-## 2. Problema
+## 2. Problem
 
-- Los LLM escriben nftables crudo de forma poco confiable y peligrosa.
-- La respuesta automatizada a incidentes de red exige reglas dinámicas
-  (bloqueos temporales, rate-limits), pero dar escritura arbitraria del
-  firewall a software autónomo es inaceptable.
-- Los rulesets crecen hasta volverse inauditables: reglas sombreadas,
-  conflictos y drift entre la política declarada y el estado vivo.
+- LLMs write raw nftables unreliably and dangerously.
+- Automated network incident response requires dynamic rules (temporary
+  blocks, rate-limits), but giving arbitrary firewall write access to
+  autonomous software is unacceptable.
+- Rulesets grow until they become unauditable: shadowed rules, conflicts,
+  and drift between the declared policy and the live state.
 
-## 3. Tesis central
+## 3. Central thesis
 
-**La IA nunca habla nftables. Habla datos.** El sistema separa dos mundos:
+**The AI never speaks nftables. It speaks data.** The system separates two
+worlds:
 
-| Mundo | Quién escribe | Formato | Poder |
+| World | Who writes it | Format | Power |
 |---|---|---|---|
-| **Política base** | Humanos (git) | S-expressions + macros Clojure | Total (compilado) |
-| **Reglas dinámicas** | Agente IA u operador | **EDN puro, sin evaluación** | Solo acciones allowlisteadas, con TTL |
+| **Base policy** | Humans (git) | S-expressions + Clojure macros | Full (compiled) |
+| **Dynamic rules** | AI agent or operator | **Pure EDN, no evaluation** | Allowlisted actions only, with TTL |
 
-El agente produce *datos* contra un schema cerrado. Nunca invoca código,
-nunca emite sintaxis nftables. El compilador —determinista— decide qué es
-posible. Lo que el DSL no puede expresar, no existe.
+The agent produces *data* against a closed schema. It never invokes code,
+never emits nftables syntax. The compiler — deterministic — decides what is
+possible. What the DSL cannot express does not exist.
 
-## 4. Arquitectura
+## 4. Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│ Capa 0 · Política (humanos, git)                        │
-│   policy.lisp — zonas, servicios, macros                │
+│ Layer 0 · Policy (humans, git)                          │
+│   policy.lisp — zones, services, macros                 │
 ├─────────────────────────────────────────────────────────┤
-│ Capa 1 · Compilador (Clojure, determinista)             │
-│   macros → reglas nftables concretas                    │
+│ Layer 1 · Compiler (Clojure, deterministic)             │
+│   macros → concrete nftables rules                      │
 ├─────────────────────────────────────────────────────────┤
-│ Capa 2 · Validador (clojure.spec + invariantes I0–I8)   │
-│   rechaza por construcción lo peligroso                 │
+│ Layer 2 · Validator (clojure.spec + invariants I0–I8)   │
+│   rejects the dangerous by construction                 │
 ├─────────────────────────────────────────────────────────┤
-│ Capa 3 · IR — representación intermedia neutra          │
-│   reglas como datos (EDN tipado por spec)               │
-│   ★ las invariantes I0–I8 se aplican AQUÍ ⇒             │
-│     valen para cualquier backend                        │
+│ Layer 3 · IR — neutral intermediate representation      │
+│   rules as data (EDN typed by spec)                     │
+│   ★ invariants I0–I8 are applied HERE ⇒                 │
+│     they hold for any backend                           │
 ├───────────────────────┬─────────────────────────────────┤
-│ Capa 4 · Backends     │                                 │
-│  v1: ruleset.nft      │  manifest.json/.edn (para IA,   │
-│  v1.5: pf (BSD)       │  idéntico en todos los backends)│
+│ Layer 4 · Backends    │                                 │
+│  v1: ruleset.nft      │  manifest.json/.edn (for AI,    │
+│  v1.5: pf (BSD)       │  identical across backends)     │
 │  exp.: FortiOS, IOS   │                                 │
 ├───────────────────────┴─────────────────────────────────┤
-│ Capa 5 · Runtime                                        │
-│   aplica, vigila TTLs, detecta drift, audita            │
+│ Layer 5 · Runtime                                       │
+│   applies, watches TTLs, detects drift, audits          │
 ├─────────────────────────────────────────────────────────┤
-│ Capa 6 · Puente IA — seguro, multi-proveedor            │
-│   adaptadores: Gemini, Claude, GPT, Ollama, vLLM…       │
-│   contexto = manifest → propone reglas EDN → Capa 2     │
+│ Layer 6 · AI bridge — secure, multi-provider            │
+│   adapters: Gemini, Claude, GPT, Ollama, vLLM…          │
+│   context = manifest → proposes EDN rules → Layer 2     │
 └─────────────────────────────────────────────────────────┘
 ```
 
-Flujo del agente: `alerta → IA propone EDN → validador (Capa 2) → dry-run →
-apply → expira por TTL → registro de auditoría`. Toda decisión pasa
-obligatoriamente por el mismo validador, venga de donde venga.
+Agent flow: `alert → AI proposes EDN → validator (Layer 2) → dry-run →
+apply → expires by TTL → audit log`. Every decision must pass through the
+same validator, no matter where it comes from.
 
-### Representación intermedia (IR) y backends
+### Intermediate representation (IR) and backends
 
-La IR es un conjunto de mapas EDN tipados por spec: zonas, servicios,
-reglas de política y reglas dinámicas. Cada backend es una **función pura**
-`IR → salida` (texto nft, config pf, llamadas REST…). El compilador emite IR;
-los backends la consumen. Consecuencias directas:
+The IR is a set of EDN maps typed by spec: zones, services, policy rules and
+dynamic rules. Each backend is a **pure function** `IR → output` (nft text,
+pf config, REST calls…). The compiler emits IR; backends consume it. Direct
+consequences:
 
-- Las invariantes de seguridad se verifican una sola vez (sobre la IR) y
-  heredan todos los backends.
-- El manifiesto para la IA no cambia entre plataformas.
-- Agregar un backend no toca el compilador ni el validador.
+- Security invariants are verified once (over the IR) and inherited by all
+  backends.
+- The manifest for the AI does not change between platforms.
+- Adding a backend does not touch the compiler or the validator.
 
-**Principio de diseño: IR mínima con camino de crecimiento explícito.**
+**Design principle: minimal IR with an explicit growth path.**
 
-- **v1 = lo básico:** direcciones/puertos inline, zonas, servicios,
-  allow/deny, contención. Nada más. Nada prematuro.
-- **Schema versionado:** todo manifiesto lleva `:ir/version`; los schemas
-  son cerrados (claves desconocidas ⇒ rechazo) y evolucionan solo por
-  versión explícita.
-- **Registry extensible de tipos de objeto:** los conceptos nuevos
-  (`:ir/named-object`, `:ir/service-group`, …) se registran sin tocar el
-  core del compilador ni el validador.
-- **Regla de admisión:** un concepto entra a la IR cuando (a) dos backends
-  lo saben expresar, o (b) nftables lo exige. Si solo un backend futuro lo
-  necesita, espera en el roadmap de ese backend.
-- **Path concreto:** cuando llegue el backend API-centrado (M7, FortiOS/
-  Cisco) que exige objetos direccionados, se registra `:ir/named-object` y
-  el compilador deriva automáticamente los objetos desde las direcciones
-  inline existentes — políticas viejas siguen compilando sin cambios.
+- **v1 = the basics:** inline addresses/ports, zones, services, allow/deny,
+  containment. Nothing else. Nothing premature.
+- **Versioned schema:** every manifest carries `:ir/version`; schemas are
+  closed (unknown keys ⇒ rejection) and evolve only through explicit
+  versions.
+- **Extensible object type registry:** new concepts (`:ir/named-object`,
+  `:ir/service-group`, …) are registered without touching the compiler core
+  or the validator.
+- **Admission rule:** a concept enters the IR when (a) two backends know how
+  to express it, or (b) nftables demands it. If only one future backend
+  needs it, it waits in that backend's roadmap.
+- **Concrete path:** when the API-centric backend arrives (M7, FortiOS/
+  Cisco) which demands addressed objects, `:ir/named-object` gets registered
+  and the compiler automatically derives objects from existing inline
+  addresses — old policies keep compiling unchanged.
 
-| Backend | Mecanismo dinámico | Encaje | Estado |
+| Backend | Dynamic mechanism | Fit | Status |
 |---|---|---|---|
-| **Linux nftables** | sets con `timeout` + namespace efímero | nativo — backend de referencia | **v1** |
-| **OpenBSD/FreeBSD pf** | anchors + `<tables> persist` | muy bueno | v1.5 |
-| **Cisco IOS/ASA** | ACLs numeradas vía SSH/NETCONF | bueno para contención (drop/rate-limit); TTL agendado por runtime | exploratorio |
-| **Fortinet FortiOS** | objetos + políticas vía REST API | bueno para contención; TTL agendado por runtime | exploratorio |
+| **Linux nftables** | sets with `timeout` + ephemeral namespace | native — reference backend | **v1** |
+| **OpenBSD/FreeBSD pf** | anchors + `<tables> persist` | very good | v1.5 |
+| **Cisco IOS/ASA** | numbered ACLs via SSH/NETCONF | good for containment (drop/rate-limit); TTL scheduled by runtime | exploratory |
+| **Fortinet FortiOS** | objects + policies via REST API | good for containment; TTL scheduled by runtime | exploratory |
 
-Nota honesta: en nftables/pf el TTL lo resuelve la plataforma (timeouts de
-sets / anchors descargados). En plataformas API-centradas (Cisco/Forti), el
-runtime debe agendar la expiración vía API — misma semántica, mecánica distinta.
+Honest note: in nftables/pf the TTL is solved by the platform (set timeouts /
+unloaded anchors). On API-centric platforms (Cisco/Forti), the runtime must
+schedule expiration via API — same semantics, different mechanics.
 
-### Puente IA seguro (multi-proveedor)
+### Secure AI bridge (multi-provider)
 
-El puente es la única puerta de entrada del LLM al sistema, y es
-**agnóstico al proveedor**: un protocolo de adaptadores donde cada modelo
-(Gemini, Claude, GPT, Ollama local, vLLM self-hosted…) implementa la misma
-interfaz mínima:
+The bridge is the single entry point of the LLM into the system, and it is
+**provider agnostic**: an adapter protocol where each model (Gemini, Claude,
+GPT, local Ollama, self-hosted vLLM…) implements the same minimal interface:
 
 ```clojure
 (defprotocol LLMBridge
-  (contexto [this manifest eventos] "arma el prompt con estado + alertas")
-  (proponer [this respuesta-cruda] "parsea la salida del modelo a EDN candidato"))
+  (contexto [this manifest eventos] "builds the prompt with state + alerts")
+  (proponer [this respuesta-cruda] "parses the model's output into candidate EDN"))
 ```
 
-Propiedades de diseño:
+Design properties:
 
-- **El contrato vive en Vallum, no en el modelo.** El adaptador convierte la
-  respuesta cruda a EDN y la entrega *siempre* al validador (Capa 2). Ningún
-  adaptador tiene ruta directa a apply.
-- **Modelo no confiable por diseño:** como la seguridad depende solo del
-  compilador/validador, cambiar o mezclar proveedores no altera las
-  garantías. Un modelo tonto produce reglas rechazadas; un modelo malicioso
-  también.
-- **Degradación elegante:** sin API disponible, un adaptador local (Ollama)
-  u operador humano ocupan el mismo lugar. El runtime funciona igual.
-- **Comparabilidad:** mismo manifiesto + mismos eventos ⇒ benchmark justo
-  entre modelos sobre tasa de propuestas válidas/rechazadas.
+- **The contract lives in Vallum, not in the model.** The adapter converts
+  the raw response to EDN and hands it *always* to the validator (Layer 2).
+  No adapter has a direct path to apply.
+- **Untrusted model by design:** since security depends only on the
+  compiler/validator, switching or mixing providers does not alter the
+  guarantees. A dumb model produces rejected rules; a malicious one too.
+- **Graceful degradation:** with no API available, a local adapter (Ollama)
+  or a human operator take the same place. The runtime works the same.
+- **Comparability:** same manifest + same events ⇒ fair benchmark between
+  models over valid/rejected proposal rates.
 
-### Ingesta de alertas (v1: un solo modo)
+### Alert ingestion (v1: a single mode)
 
-**v1 soporta un único modo:** archivo de eventos propio en formato
-NDJSON (una línea = un evento), vigilado por el runtime.
+**v1 supports a single mode:** its own NDJSON event file (one line = one
+event), watched by the runtime.
 
 ```json
 {"ts":"2026-08-22T20:14:59Z","kind":"ssh.bruteforce","src_ip":"203.0.113.66","severity":7,"refs":["alerta#4821"]}
 ```
 
-Propiedades:
+Properties:
 
-- Schema cerrado validado en ingesta; línea malformada se rechaza y registra,
-  jamás tira el proceso.
-- **Vallum no lee logs crudos.** Consume un canal curado por el operador:
-  quien despliega decide qué eventos existen y puede imponer restricciones
-  mayores *externamente* por compliance (filtrado/agregación upstream,
-  enriquecimiento controlado) y *internamente* vía budgets del sandbox en su
-  `policy.lisp`. El contrato de eventos es auditable por sí solo.
-- Modos futuros (action de fail2ban, journald, webhook HTTP) entran como
-  adaptadores del mismo patrón del puente IA: contrato fijo, fuente
-  intercambiable. Fuera de alcance v1.
+- Closed schema validated at ingestion; malformed lines get rejected and
+  logged, never crash the process.
+- **Vallum does not read raw logs.** It consumes a channel curated by the
+  operator: whoever deploys decides which events exist and can impose greater
+  restrictions *externally* for compliance (upstream filtering/aggregation,
+  controlled enrichment) and *internally* via sandbox budgets in their
+  `policy.lisp`. The event contract is auditable on its own.
+- Future modes (fail2ban action, journald, HTTP webhook) enter as adapters of
+  the same pattern as the AI bridge: fixed contract, interchangeable source.
+  Out of scope for v1.
 
-### Boceto del DSL
+### DSL sketch
 
-Política humana (`policy.lisp`):
+Human policy (`policy.lisp`):
 
 ```clojure
 (policy "edge-host"
@@ -184,7 +183,7 @@ Política humana (`policy.lisp`):
   (allow {:from :lan :to :wan})
   (allow {:from :wan :to :lan :service :web})
 
-  ;; El único espacio donde la IA tiene voz:
+  ;; The only space where the AI has a voice:
   (sandbox containment
     {:actions      #{:drop-ip :rate-limit}
      :default-ttl  "30m"
@@ -192,152 +191,150 @@ Política humana (`policy.lisp`):
      :max-active   50}))
 ```
 
-Regla dinámica producida por la IA (solo datos):
+Dynamic rule produced by the AI (data only):
 
 ```clojure
 {:action  :drop-ip
  :ip      "203.0.113.66"
  :ttl     "45m"
- :reason  "SSH brute-force: 200 intentos/min (alerta #4821)"
+ :reason  "SSH brute-force: 200 attempts/min (alert #4821)"
  :source  :agent/gemini
  :ts      "2026-08-22T20:15:00Z"}
 ```
 
-Las marcas `:reason`, `:source`, `:ts` son obligatorias: toda regla lleva su
-justificación legible y trazable.
+The `:reason`, `:source`, `:ts` marks are mandatory: every rule carries its
+readable, traceable justification.
 
-## 5. Garantías de seguridad (invariantes del compilador)
+## 5. Security guarantees (compiler invariants)
 
-Enforced por código, no por convención. Verificadas con tests generativos.
+Enforced by code, not by convention. Verified with generative tests.
 
-| ID | Invariante |
+| ID | Invariant |
 |----|------------|
-| **I0** | Las reglas dinámicas son EDN puro. No existe ruta de evaluación de código proveniente de la IA. |
-| **I1** | El vocabulario dinámico es cerrado: solo `drop-ip` y `rate-limit`. `accept`, `flush`, `delete`, manipulación de cadenas base: **no expresables**. |
-| **I2** | Toda regla dinámica lleva TTL ≤ `max-ttl`. Expiración gestionada por el runtime; si el proceso muere, las reglas mueren con él (namespace efímero de nftables). |
-| **I3** | Presupuesto de riesgo: máx. N reglas activas, máx. M IPs contenidas simultáneamente. Un agente desbocado se auto-limita. |
-| **I4** | Determinismo: misma política + mismas reglas dinámicas ⇒ mismo ruleset byte a byte (hash auditable en cada apply). |
-| **I5** | Dry-run por defecto. Apply exige flag explícito; modo `--approve-human` configurable para acciones de mayor impacto. |
-| **I6** | Trazabilidad total: cada regla registra origen, razón, timestamp y hash del manifiesto vigente. |
-| **I7** | El runtime opera con privilegios mínimos (`CAP_NET_ADMIN`, sin root pleno cuando sea posible). |
-| **I8** | Neutralidad de proveedor: ningún componente de seguridad depende del LLM. Todo modelo es intercambiable porque se le trata como no confiable; su única salida posible es EDN candidato que pasa por el validador. |
+| **I0** | Dynamic rules are pure EDN. There is no code-evaluation path coming from the AI. |
+| **I1** | The dynamic vocabulary is closed: only `drop-ip` and `rate-limit`. `accept`, `flush`, `delete`, base-chain manipulation: **not expressible**. |
+| **I2** | Every dynamic rule carries TTL ≤ `max-ttl`. Expiration managed by the runtime; if the process dies, the rules die with it (ephemeral nftables namespace). |
+| **I3** | Risk budget: max N active rules, max M contained IPs simultaneously. A runaway agent self-limits. |
+| **I4** | Determinism: same policy + same dynamic rules ⇒ same ruleset byte for byte (auditable hash on every apply). |
+| **I5** | Dry-run by default. Apply requires an explicit flag; configurable `--approve-human` mode for higher-impact actions. |
+| **I6** | Full traceability: every rule records origin, reason, timestamp and hash of the current manifest. |
+| **I7** | The runtime operates with least privilege (`CAP_NET_ADMIN`, no full root whenever possible). |
+| **I8** | Provider neutrality: no security component depends on the LLM. Every model is interchangeable because it is treated as untrusted; its only possible output is candidate EDN that goes through the validator. |
 
-**Prueba adversarial obligatoria (hito M2):** suite de ataques al sandbox —
-claves/acciones desconocidas, EDN malformado, anidamiento inesperado,
-confusión de tipos, enteros gigantes, TTL negativo, NaN, campos duplicados,
-unicode hostil, strings sobredimensionados, tags inesperados, prompt
-injection vía logs. El sistema debe rechazarlos todos y dejar registro. El
-criterio: «abrí el puerto 22 a Internet» falla porque `:open-port` **no
-existe en el lenguaje**, no porque un filtro lo detecte.
+**Mandatory adversarial test (milestone M2):** attack suite against the
+sandbox — unknown keys/actions, malformed EDN, unexpected nesting, type
+confusion, giant integers, negative TTL, NaN, duplicate fields, hostile
+unicode, oversized strings, unexpected tags, prompt injection via logs. The
+system must reject them all and leave a record. The criterion: "open port 22
+to the Internet" fails because `:open-port` **does not exist in the
+language**, not because a filter detects it.
 
-## 6. Alcance
+## 6. Scope
 
-**Dentro (v1):**
-- Un host Linux con nftables (backend de referencia).
-- DSL de política + compilador determinista + **IR neutra** + emisores
-  nft/JSON.
-- Runtime con TTLs, drift detection y auditoría.
-- Puente IA multi-proveedor (protocolo de adaptadores) con adaptador Gemini
-  incluido para generación de reglas dinámicas con validación completa.
-- Demo end-to-end reproducible (script de ataque simulado incluido).
+**Inside (v1):**
+- One Linux host with nftables (reference backend).
+- Policy DSL + deterministic compiler + **neutral IR** + nft/JSON emitters.
+- Runtime with TTLs, drift detection and auditing.
+- Multi-provider AI bridge (adapter protocol) with a Gemini adapter included
+  for dynamic rule generation with full validation.
+- Reproducible end-to-end demo (attack simulation script included).
 
-**Roadmap posterior a v1:**
-- **v1.5:** backend pf (OpenBSD/FreeBSD) — mismo DSL, demo en BSD.
-- **Exploratorio:** backends API-centrados FortiOS y Cisco IOS/ASA,
-  restringidos a acciones de contención (`drop-ip`, `rate-limit`).
+**Post-v1 roadmap:**
+- **v1.5:** pf backend (OpenBSD/FreeBSD) — same DSL, demo on BSD.
+- **Exploratory:** API-centric FortiOS and Cisco IOS/ASA backends, restricted
+  to containment actions (`drop-ip`, `rate-limit`).
 
-**Fuera (explícitamente):**
-- Firewalls cloud (AWS SG, GCP FW), multi-host/orquestación → v2.
-- Entrenamiento o hosting de modelos propios: solo consumo de API.
-- Reemplazar firewalls empresariales: nicho homelab/small-biz/lab.
+**Out (explicitly):**
+- Cloud firewalls (AWS SG, GCP FW), multi-host/orchestration → v2.
+- Training or hosting our own models: API consumption only.
+- Replacing enterprise firewalls: homelab/small-biz/lab niche.
 
 ## 7. Stack
 
-- **GraalVM como JDK del proyecto desde M0** (modo JIT para desarrollo);
-  native-image compilado y testeado en CI desde M2. Ponderación completa en
-  §7.1.
-- `clojure.spec` — schemas e invariantes.
-- `test.check` — **tests generativos**: políticas arbitrarias deben cumplir I0–I8 siempre.
+- **GraalVM as the project JDK from M0** (JIT mode for development);
+  native-image compiled and tested in CI from M2. Full rationale in §7.1.
+- `clojure.spec` — schemas and invariants.
+- `test.check` — **generative tests**: arbitrary policies must always satisfy I0–I8.
 - `cheshire` — JSON.
-- CLI propia; adaptadores LLM vía HTTP REST puro (sin SDKs pesados), Gemini
-  primero, Ollama como opción offline.
-- Demo: VM/container Debian con nftables.
+- Own CLI; LLM adapters via plain HTTP REST (no heavy SDKs), Gemini first,
+  Ollama as offline option.
+- Demo: Debian VM/container with nftables.
 
-### 7.1 Ponderación JVM vs GraalVM native-image → decisión: GraalVM desde el inicio
+### 7.1 JVM vs GraalVM native-image weighing → decision: GraalVM from the start
 
-El mismo código Clojure corre en ambos mundos. La distinción clave es que
-GraalVM tiene **dos modos**: JIT (es un JDK más, desarrollo idéntico a JVM
-estándar) y native-image/AOT (el modo restringido donde viven las
-restricciones de reflexión). Eso permite una estrategia híbrida:
+The same Clojure code runs in both worlds. The key distinction is that
+GraalVM has **two modes**: JIT (it is just another JDK, development identical
+to standard JVM) and native-image/AOT (the restricted mode where reflection
+constraints live). This allows a hybrid strategy:
 
-- **Desde M0:** GraalVM como JDK del proyecto (modo JIT) — experiencia de
-  desarrollo idéntica a JVM estándar, cero costo diario.
-- **Desde M2:** job de CI que compila native-image y corre la suite de tests
-  sobre el binario. Los metadatos de reflexión (`reachability-metadata`,
-  `clj-easy/graal-build-time`) se mantienen **incrementalmente** con cada
-  dependencia, nunca como big-bang tardío.
-- **Artefacto de distribución:** fat-jar por defecto hasta que un disparador
-  objetivo pida publicar el binario nativo — que ya existirá, probado en CI.
+- **From M0:** GraalVM as the project JDK (JIT mode) — developer experience
+  identical to standard JVM, zero daily cost.
+- **From M2:** CI job compiling native-image and running the test suite on
+  the binary. Reflection metadata (`reachability-metadata`,
+  `clj-easy/graal-build-time`) maintained **incrementally** with each
+  dependency, never as a late big-bang.
+- **Distribution artifact:** fat-jar by default until an objective trigger
+  asks to publish the native binary — which will already exist, tested in CI.
 
-Peso de las diferencias (para contexto de la decisión):
+Weight of the differences (for context of the decision):
 
-| Dimensión | JVM fat-jar | GraalVM native | Resolución con la estrategia híbrida |
+| Dimension | JVM fat-jar | GraalVM native | Resolution with the hybrid strategy |
 |---|---|---|---|
-| RAM en reposo (daemon) | 150–300 MB | 20–50 MB | Binario nativo disponible cuando haga falta |
-| Distribución | Requiere JRE (~200 MB) | Binario único | Idem |
-| Loop dev/build | Segundos | Minutos + config | Dev en modo JIT: costo nulo |
-| Compatibilidad | Total | Casos borde (spec/Jackson) | Detectados en CI desde M2, no al final |
+| Idle RAM (daemon) | 150–300 MB | 20–50 MB | Native binary available when needed |
+| Distribution | Requires JRE (~200 MB) | Single binary | Same |
+| Dev/build loop | Seconds | Minutes + config | Dev in JIT mode: zero cost |
+| Compatibility | Total | Edge cases (spec/Jackson) | Detected in CI from M2, not at the end |
 
-**Disparadores para publicar el binario nativo como artefacto principal:**
-- distribución a terceros («binario único»), o
-- deployment en hardware limitado (<1 GB RAM: routers, SBCs);
-- alternativa intermedia si solo molesta el tamaño: **jlink** (~50 MB).
+**Triggers to publish the native binary as the main artifact:**
+- distribution to third parties ("single binary"), or
+- deployment on limited hardware (<1 GB RAM: routers, SBCs);
+- middle-ground alternative if only size bothers: **jlink** (~50 MB).
 
-## 8. Hitos demostrables
+## 8. Demonstrable milestones
 
-| Hito | Entregable | Criterio de aceptación |
+| Milestone | Deliverable | Acceptance criteria |
 |------|-----------|------------------------|
-| **M0** | Repo + estructura deps.edn | `clojure -M:dev` corre tests vacíos |
-| **M1** | DSL core + compilador | Genera `ruleset.nft` válido; `nft -c` lo acepta |
-| **M2** | Validador + invariantes I0–I8 | Suite adversarial pasa; tests generativos verdes; **build nativo verde en CI** |
-| **M3** | Emisor manifest + auditoría semántica | Detecta reglas sombreadas en fixture conocido |
-| **M4** | Runtime (apply, TTL, drift) | Regla dinámica expira sola; drift reportado ante cambio manual |
-| **M5** | Puente IA (adaptador Gemini + stub offline) | Demo E2E: ataque simulado → contención automática → expiry |
+| **M0** | Repo + deps.edn structure | `clojure -M:dev` runs empty tests |
+| **M1** | DSL core + compiler | Generates valid `ruleset.nft`; accepted by `nft -c` |
+| **M2** | Validator + invariants I0–I8 | Adversarial suite passes; generative tests green; **native build green in CI** |
+| **M3** | Manifest emitter + semantic audit | Detects shadowed rules in known fixture |
+| **M4** | Runtime (apply, TTL, drift) | Dynamic rule expires alone; drift reported upon manual change |
+| **M5** | AI bridge (Gemini adapter + offline stub) | E2E demo: simulated attack → automatic containment → expiry |
 
-Los hitos M0–M5 constituyen v1 (nftables). Post-v1:
+Milestones M0–M5 constitute v1 (nftables). Post-v1:
 
-| Hito | Entregable | Criterio de aceptación |
+| Milestone | Deliverable | Acceptance criteria |
 |------|-----------|------------------------|
-| **M6** | Backend pf | La misma política compila a `pf.conf` con anchors; demo en OpenBSD/FreeBSD |
-| **M7** | Backend API (FortiOS o IOS/ASA) | Contención aplicada y expirada vía API en laboratorio |
+| **M6** | pf backend | The same policy compiles to `pf.conf` with anchors; demo on OpenBSD/FreeBSD |
+| **M7** | API backend (FortiOS or IOS/ASA) | Contention applied and expired via API in lab |
 
-## 9. Escenario demo final («el momento dinero»)
+## 9. Final demo scenario ("the money moment")
 
-1. Host demo: web pública + SSH.
-2. Script simula brute-force SSH → escribe eventos NDJSON al archivo de
-   ingesta.
-3. El adaptador Gemini propone `drop-ip` con TTL → validador aprueba → se
-   aplica → expira.
-4. **Ataque 2:** alerta envenenada con prompt injection que pide «abrir puerto
-   22 a todo Internet» → el validador la rechaza porque *no es expresable* →
-   queda registrada como intento violado.
-5. `git diff` de la política vs estado vivo: cero drift no explicado.
+1. Demo host: public web + SSH.
+2. Script simulates SSH brute-force → writes NDJSON events to the ingestion
+   file.
+3. The Gemini adapter proposes `drop-ip` with TTL → validator approves →
+   applied → expires.
+4. **Attack 2:** poisoned alert with prompt injection asking to "open port 22
+   to the whole Internet" → the validator rejects it because *it is not
+   expressible* → recorded as a violated attempt.
+5. `git diff` of the policy vs live state: zero unexplained drift.
 
-## 10. Decisiones tomadas
+## 10. Decisions made
 
-- [x] Nombre: **Vallum**.
-- [x] Clojure como lenguaje (vs Common Lisp).
-- [x] Puente IA multi-proveedor con protocolo de adaptadores; Gemini primero,
-      Ollama opcional offline.
-- [x] Distribución: **GraalVM como JDK desde M0 (modo JIT)**, native-image
-      verificado en CI desde M2, metadatos de reflexión incrementales;
-      artefacto final según disparadores (§7.1).
-- [x] Ingesta de alertas v1: **archivo NDJSON propio**, canal curado por el
-      operador (compliance-friendly); otros modos futuros como adaptadores.
-- [x] IR: **mínima en v1** (nft-like, direcciones inline) con schema
-      versionado y registry extensible de tipos; crecimiento por regla de
-      admisión explícita (§4).
+- [x] Name: **Vallum**.
+- [x] Clojure as language (vs Common Lisp).
+- [x] Multi-provider AI bridge with adapter protocol; Gemini first, Ollama
+      optional offline.
+- [x] Distribution: **GraalVM as JDK from M0 (JIT mode)**, native-image
+      verified in CI from M2, incremental reflection metadata; final artifact
+      per triggers (§7.1).
+- [x] v1 alert ingestion: **own NDJSON file**, channel curated by the
+      operator (compliance-friendly); other future modes as adapters.
+- [x] IR: **minimal in v1** (nft-like, inline addresses) with versioned
+      schema and extensible type registry; growth by explicit admission rule
+      (§4).
 
-## 11. Preguntas abiertas
+## 11. Open questions
 
-Ninguna. La propuesta está lista para arrancar M0.
+None. The proposal is ready to start M0.

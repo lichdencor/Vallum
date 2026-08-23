@@ -1,12 +1,12 @@
 (ns vallum.system
-  "Metadatos del proyecto: versión y fase actual del roadmap (M0–M5).
+  "Project metadata: current version and roadmap phase (M0–M5).
 
-  La fase declarada acá es la fuente de verdad para el harness (qué checks
-  aplican) y para la documentación. Se avanza junto con los hitos de
-  docs/PROPOSAL.md §8.")
+  The phase declared here is the source of truth for the harness (which
+  checks apply) and for the documentation. It advances along with the
+  milestones of docs/PROPOSAL.md §8.")
 
 (def version
-  "Versión actual del proyecto Vallum."
+  "Current version of the Vallum project."
   {:name  "vallum"
    :major 0
    :minor 1

@@ -1,27 +1,27 @@
-# Vallum — hooks de pre-commit
+# Vallum — pre-commit hooks
 #
-# Dos caminos, misma fuente de verdad (bin/hooks/):
+# Two paths, same source of truth (bin/hooks/):
 #
-#   A) Git puro, sin dependencias:   ./bin/install-git-hooks.sh   ← recomendado
-#   B) pre-commit (Python), si ya lo tenés:  pre-commit install
+#   A) Plain git, no dependencies:   ./bin/install-git-hooks.sh   ← recommended
+#   B) pre-commit (Python), if you already have it:  pre-commit install
 #
-# El lint/formato/tests corren vía deps.edn (clj-kondo y cljfmt como deps de
-# Maven, versionados en este repo) — no requieren binarios instalados.
-# Trivy es un binario externo: instalarlo con ./bin/install-trivy.sh; si no
-# está, el hook avisa y continúa (la enforcement dura vive en `clojure -M:harness all`).
+# Lint/format/tests run via deps.edn (clj-kondo and cljfmt as Maven deps,
+# versioned in this repo) — no installed binaries required.
+# Trivy is an external binary: install it with ./bin/install-trivy.sh; if
+# missing, the hook warns and continues (hard enforcement lives in `clojure -M:harness all`).
 
 repos:
   - repo: local
     hooks:
       - id: vallum-harness-fast
-        name: Vallum fast suite (kondo + cljfmt + arquitectura + tests)
+        name: Vallum fast suite (kondo + cljfmt + architecture + tests)
         entry: bin/hooks/pre-commit.sh
         language: system
         pass_filenames: false
         always_run: true
 
       - id: vallum-trivy
-        name: Trivy fs scan (skip suave si no está instalado)
+        name: Trivy fs scan (soft skip if not installed)
         entry: bin/hooks/trivy.sh
         language: system
         pass_filenames: false
@@ -34,7 +34,7 @@ repos:
         stages: [commit-msg]
         always_run: true
 
-  # Higiene general de archivos (necesita el paquete pre-commit de Python)
+  # General file hygiene (needs the Python pre-commit package)
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v4.6.0
     hooks:

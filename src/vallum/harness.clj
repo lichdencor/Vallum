@@ -1,24 +1,24 @@
 (ns vallum.harness
-  "Suite de calidad de Vallum: lint, formato, seguridad (Trivy), convenciones
-  de arquitectura y tests — ejecutable desde REPL o CLI.
+  "Vallum quality suite: lint, formatting, security (Trivy), architecture
+  conventions and tests — executable from REPL or CLI.
 
-  Filosofía:
-  - Cada check es una función pura-ish que DEVUELVE DATOS (nunca imprime).
-    El reporteo es una capa aparte, así el REPL consume resultados y el CLI
-    los formatea.
-  - Los checks se activan por hito (:phase en vallum.system): lo que llega
-    en M2 (tests generativos/adversariales) hoy se reporta como :skip.
-  - Degradación elegante: si Trivy no está instalado, el check salta con
-    instrucciones en vez de romper la suite.
+  Philosophy:
+  - Each check is a pure-ish function that RETURNS DATA (never prints).
+    Reporting is a separate layer, so the REPL consumes results and the CLI
+    formats them.
+  - Checks are gated by milestone (:phase in vallum.system): what arrives in
+    M2 (generative/adversarial tests) is reported as :skip today.
+  - Graceful degradation: if Trivy is not installed, the check skips with
+    instructions instead of breaking the suite.
 
-  Uso en REPL:
+  REPL usage:
     (require '[vallum.harness :as h])
-    (h/run-checks)                    ; suite completa aplicable a esta fase
-    (h/report (h/run-checks))         ; con salida legible
-    (h/run-checks [:lint])            ; subconjunto por prefijo de id
-    (h/run-one :security/trivy-fs)    ; un check puntual
+    (h/run-checks)                    ; full suite applicable to this phase
+    (h/report (h/run-checks))         ; with human-readable output
+    (h/run-checks [:lint])            ; subset by id prefix
+    (h/run-one :security/trivy-fs)    ; a single check
 
-  Uso por CLI:
+  CLI usage:
     clojure -M:harness all | fast | list | lint | fmt | security | tests | arch"
   (:require [clojure.java.io :as io]
             [clojure.java.shell :as sh]
@@ -27,12 +27,12 @@
             [clojure.tools.namespace.find :as find]
             [vallum.system :as system]))
 
-;; ---- Resultados -------------------------------------------------------------
+;; ---- Results -------------------------------------------------------------
 
 (def statuses #{::pass ::fail ::skip})
 
 (defn result
-  "Construye un resultado de check normalizado."
+  "Builds a normalized check result."
   [id status summary & [details]]
   {:pre [(statuses status)]}
   (cond-> {:id id :status status :summary summary}
@@ -46,7 +46,7 @@
   [{:keys [status]}]
   (= status ::fail))
 
-;; ---- Fases ------------------------------------------------------------------
+;; ---- Phases ------------------------------------------------------------------
 
 (def phase-order [:M0 :M1 :M2 :M3 :M4 :M5])
 
@@ -62,10 +62,10 @@
   [required]
   (>= (phase-rank (current-phase)) (phase-rank required)))
 
-;; ---- Ejecución de procesos --------------------------------------------------
+;; ---- Process execution --------------------------------------------------
 
 (defn- sh*
-  "Ejecuta un comando sin lanzar excepciones. Devuelve {:exit :out :err}."
+  "Runs a command without throwing. Returns {:exit :out :err}."
   [& args]
   (try
     (apply sh/sh args)
@@ -73,7 +73,7 @@
       {:exit -1 :out "" :err (ex-message e)})))
 
 (defn- trivy-binary
-  "Localiza el binario trivy: PATH o ~/.local/bin. nil si no existe."
+  "Locates the trivy binary: PATH or ~/.local/bin. nil if missing."
   []
   (let [local (io/file (System/getProperty "user.home") ".local/bin/trivy")]
     (or (when (zero? (:exit (sh* "trivy" "--version")))
@@ -84,28 +84,28 @@
 ;; ---- Checks -----------------------------------------------------------------
 
 (defn check-kondo
-  "Lint con clj-kondo vía deps.edn (no requiere binario instalado).
-  Warnings visibles pero no bloquean (--fail-level error)."
+  "Lint with clj-kondo via deps.edn (no installed binary needed).
+  Warnings are visible but don't block (--fail-level error)."
   []
   (println "🔍 clj-kondo...")
   (let [{:keys [exit out err]} (sh* "clojure" "-M:kondo" "--lint" "src" "test" "--fail-level" "error")]
     (if (zero? exit)
-      (result :lint/kondo ::pass "sin errores de lint")
-      (result :lint/kondo ::fail "lint falló" (str out err)))))
+      (result :lint/kondo ::pass "no lint errors")
+      (result :lint/kondo ::fail "lint failed" (str out err)))))
 
 (defn check-cljfmt
-  "Verifica el formateo con cljfmt vía deps.edn."
+  "Verifies formatting with cljfmt via deps.edn."
   []
   (println "🎨 cljfmt...")
   (let [{:keys [exit out err]} (sh* "clojure" "-M:fmt" "check" "src" "test")]
     (if (zero? exit)
-      (result :format/cljfmt ::pass "formato correcto")
-      (result :format/cljfmt ::fail "formato incorrecto (correr: clojure -M:fmt fix src test)"
+      (result :format/cljfmt ::pass "formatting OK")
+      (result :format/cljfmt ::fail "formatting incorrect (run: clojure -M:fmt fix src test)"
               (str out err)))))
 
 (defn check-trivy-fs
-  "Escaneo de filesystem con Trivy: vulnerabilidades HIGH/CRITICAL,
-  misconfigurations y secrets. Salta si el binario no está instalado."
+  "Filesystem scan with Trivy: HIGH/CRITICAL vulnerabilities,
+  misconfigurations and secrets. Skips if the binary is not installed."
   []
   (println "🛡️  trivy fs...")
   (if-let [trivy (trivy-binary)]
@@ -115,34 +115,34 @@
                                   "--exit-code" "1"
                                   ".")]
       (if (zero? exit)
-        (result :security/trivy-fs ::pass "sin vulnerabilidades HIGH/CRITICAL ni secrets")
-        (result :security/trivy-fs ::fail "vulnerabilidades/misconfig/secrets encontrados" out)))
+        (result :security/trivy-fs ::pass "no HIGH/CRITICAL vulnerabilities nor secrets")
+        (result :security/trivy-fs ::fail "vulnerabilities/misconfig/secrets found" out)))
     (result :security/trivy-fs ::skip
-            "trivy no instalado (ver bin/install-trivy.sh)")))
+            "trivy not installed (see bin/install-trivy.sh)")))
 
 (defn check-trivy-config
-  "Escaneo de configuración (IaC/dockerfiles) con Trivy. No necesita DB."
+  "Configuration (IaC/dockerfiles) scan with Trivy. Needs no DB."
   []
   (println "⚙️  trivy config...")
   (if-let [trivy (trivy-binary)]
     (let [{:keys [exit out]} (sh* trivy "config" "--exit-code" "1" ".")]
       (if (zero? exit)
-        (result :security/trivy-config ::pass "configuración limpia")
-        (result :security/trivy-config ::fail "misconfigurations encontradas" out)))
+        (result :security/trivy-config ::pass "configuration clean")
+        (result :security/trivy-config ::fail "misconfigurations found" out)))
     (result :security/trivy-config ::skip
-            "trivy no instalado (ver bin/install-trivy.sh)")))
+            "trivy not installed (see bin/install-trivy.sh)")))
 
 (defn- test-summary->status
   [id label {:keys [fail error]}]
   (if (pos? (+ fail error))
-    (result id ::fail (str label ": " (+ fail error) " fallo(s)"))
+    (result id ::fail (str label ": " (+ fail error) " failure(s)"))
     (result id ::pass (str label " OK"))))
 
 (defn check-unit-tests
-  "Corre TODA la suite bajo test/ en este mismo proceso vía vallum.run-all
-  (descubre namespaces automáticamente). La suite de arquitectura también
-  corre acá; el check dedicado :conventions/architecture la reporta aparte
-  para feedback granular."
+  "Runs the WHOLE suite under test/ in this same process via vallum.run-all
+  (auto-discovers namespaces). The architecture suite also runs here; the
+  dedicated :conventions/architecture check reports it separately for
+  granular feedback."
   []
   (println "🧪 tests...")
   (require 'vallum.run-all)
@@ -150,59 +150,60 @@
     (test-summary->status :tests/unit "tests" (run-fn))))
 
 (defn check-architecture
-  "Tests de arquitectura y convenciones (docs/ARCHITECTURE.md §4)."
+  "Architecture and convention tests (docs/ARCHITECTURE.md §4)."
   []
-  (println "🏗️  arquitectura y convenciones...")
+  (println "🏗️  architecture and conventions...")
   (require 'vallum.architecture-test)
   (let [summary (t/run-tests 'vallum.architecture-test)]
-    (test-summary->status :conventions/architecture "arquitectura" summary)))
+    (test-summary->status :conventions/architecture "architecture" summary)))
 
 (defn- subdir-test-nss
-  "Namespaces de test bajo test/vallum/<subdir>/. Devuelve [] si el dir
-  no existe o está vacío."
+  "Test namespaces under test/vallum/<subdir>/. Returns [] if the dir does
+  not exist or is empty."
   [subdir]
   (let [d (io/file "test" "vallum" (name subdir))]
     (when (.isDirectory d)
       (vec (sort (find/find-namespaces [d]))))))
 
 (defn check-subdir-suite
-  "Check para suites futuras (generativa/adversarial, docs/ARCHITECTURE.md §6):
-  descubre y corre todos los tests bajo test/vallum/<subdir>/.
-  Si la fase actual aún no alcanzó el hito de la suite, o el dir está vacío,
-  devuelve :skip."
+  "Check for future suites (generative/adversarial, docs/ARCHITECTURE.md §6):
+  discovers and runs all tests under test/vallum/<subdir>/.
+  If the current phase has not reached the suite's milestone yet, or the dir
+  is empty, returns :skip."
   [id subdir milestone]
   (println "🎲" (name id) "...")
   (cond
     (not (phase-at-least? milestone))
-    (result id ::skip (str "disponible desde " (name milestone)))
+    (result id ::skip (str "available from " (name milestone)))
 
     (empty? (subdir-test-nss subdir))
-    (result id ::skip (str "sin suites todavía (agregar tests en test/vallum/" (name subdir) "/)"))
+    (result id ::skip (str "no suites yet (add tests under test/vallum/" (name subdir) "/)"))
 
     :else
     (let [nss (subdir-test-nss subdir)]
       (doseq [ns nss] (require ns))
       (test-summary->status id (name subdir) (apply t/run-tests nss)))))
 
-;; ---- Registro de checks -----------------------------------------------------
+;; ---- Check registry -----------------------------------------------------
 
 (def registry
-  "Orden canónico de ejecución. Para agregar un check: escribir la función,
-  agregarla acá con su hito, y listo — REPL, CLI, pre-commit y CI la heredan."
+  "Canonical execution order. To add a check: write the function,
+  add it here with its milestone, done — REPL, CLI, pre-commit and CI
+  inherit it."
   [{:id :lint/kondo                  :label "lint (clj-kondo)"      :fn check-kondo}
-   {:id :format/cljfmt               :label "formato (cljfmt)"      :fn check-cljfmt}
+   {:id :format/cljfmt               :label "formatting (cljfmt)"   :fn check-cljfmt}
    {:id :security/trivy-fs           :label "trivy fs"              :fn check-trivy-fs}
    {:id :security/trivy-config       :label "trivy config"          :fn check-trivy-config}
-   {:id :conventions/architecture    :label "arquitectura/docs"     :fn check-architecture}
-   {:id :tests/unit                  :label "tests unitarios"       :fn check-unit-tests}
-   {:id :tests/generative            :label "tests generativos"     :milestone :M2
+   {:id :conventions/architecture    :label "architecture/docs"     :fn check-architecture}
+   {:id :tests/unit                  :label "unit tests"            :fn check-unit-tests}
+   {:id :tests/generative            :label "generative tests"      :milestone :M2
     :fn #(check-subdir-suite :tests/generative :generative :M2)}
-   {:id :tests/adversarial           :label "suite adversarial"     :milestone :M2
+   {:id :tests/adversarial           :label "adversarial suite"     :milestone :M2
     :fn #(check-subdir-suite :tests/adversarial :adversarial :M2)}])
 
 (defn select-checks
-  "Filtra el registro por selectores: un selector matchea el id completo
-  (:lint/kondo) o su namespace (:lint). Sin selectores ⇒ todo el registro."
+  "Filters the registry by selectors: a selector matches the full id
+  (:lint/kondo) or its namespace (:lint). No selectors ⇒ whole registry."
   [selectors]
   (let [sel (set selectors)]
     (if (empty? sel)
@@ -213,32 +214,32 @@
                registry))))
 
 (defn run-checks
-  "Ejecuta checks y devuelve un VECTOR ordenado de resultados (datos).
-  Selectors opcionales: [:lint], [:security], [:lint/kondo]..."
+  "Executes checks and returns an ordered VECTOR of results (data).
+  Optional selectors: [:lint], [:security], [:lint/kondo]..."
   ([] (run-checks []))
   ([selectors]
    (mapv (fn [{:keys [id fn]}]
            (try
              (fn)
              (catch Exception e
-               (result id ::fail "excepción en el check" (pr-str e)))))
+               (result id ::fail "exception in check" (pr-str e)))))
          (select-checks selectors))))
 
 (defn run-one
-  "Un solo check por id: (run-one :lint/kondo)."
+  "A single check by id: (run-one :lint/kondo)."
   [id]
   (first (run-checks [id])))
 
-;; ---- Reporte ----------------------------------------------------------------
+;; ---- Report ----------------------------------------------------------------
 
 (def ^:private status-icon {::pass "✅" ::fail "❌" ::skip "⏭️ "})
 
 (defn print-report!
-  "Imprime un reporte legible de los resultados. Los detalles de los checks
-  que fallaron se muestran completos."
+  "Prints a readable report of the results. Details of failed checks are
+  shown in full."
   [results]
   (println)
-  (println "═══ Vallum · harness · fase" (name (current-phase)) "═══")
+  (println "═══ Vallum · harness · phase" (name (current-phase)) "═══")
   (doseq [{:keys [id status summary details]} results]
     (println (str (status-icon status) " " (name id) " — " summary))
     (when (and details (failed? {:status status}))
@@ -250,12 +251,12 @@
   results)
 
 (defn exit-code
-  "0 si nada falló (los :skip no bloquean), 1 en caso contrario."
+  "0 if nothing failed (:skip doesn't block), 1 otherwise."
   [results]
   (if (some failed? results) 1 0))
 
 (defn run-and-report!
-  "Conveniencia REPL/CLI: corre, reporta y devuelve los resultados."
+  "REPL/CLI convenience: runs, reports and returns the results."
   ([] (run-and-report! []))
   ([selectors]
    (print-report! (run-checks selectors))))
@@ -263,13 +264,13 @@
 ;; ---- Presets ----------------------------------------------------------------
 
 (defn run-fast!
-  "Feedback instantáneo para pre-commit: lint + formato + arquitectura + tests.
-  Sin Trivy ni subprocesos lentos."
+  "Instant feedback for pre-commit: lint + format + architecture + tests.
+  No Trivy nor slow subprocesses."
   []
   (run-and-report! [:lint :format :conventions :tests/unit]))
 
 (defn run-security!
-  "Solo escaneos de seguridad (Trivy)."
+  "Security scans only (Trivy)."
   []
   (run-and-report! [:security]))
 
@@ -277,22 +278,22 @@
 
 (defn- print-usage!
   []
-  (println "Uso: clojure -M:harness <comando>")
+  (println "Usage: clojure -M:harness <command>")
   (println)
-  (println "Comandos:")
-  (println "  all        suite completa aplicable a la fase actual")
-  (println "  fast       lint + formato + arquitectura + tests (pre-commit)")
-  (println "  security   solo Trivy (fs + config)")
-  (println "  lint       solo clj-kondo")
-  (println "  fmt        solo cljfmt")
-  (println "  tests      solo tests unitarios")
-  (println "  arch       solo arquitectura/convenciones")
-  (println "  list       lista los checks registrados y sus hitos")
+  (println "Commands:")
+  (println "  all        full suite applicable to the current phase")
+  (println "  fast       lint + formatting + architecture + tests (pre-commit)")
+  (println "  security   Trivy only (fs + config)")
+  (println "  lint       clj-kondo only")
+  (println "  fmt        cljfmt only")
+  (println "  tests      unit tests only")
+  (println "  arch       architecture/conventions only")
+  (println "  list       lists registered checks and their milestones")
   (println)
-  (println "Checks registrados:")
+  (println "Registered checks:")
   (doseq [{:keys [id label milestone]} registry]
     (println (str "  " id " — " label
-                  (when milestone (str " (desde " (name milestone) ")"))))))
+                  (when milestone (str " (from " (name milestone) ")"))))))
 
 (defn -main
   [& args]
@@ -312,8 +313,8 @@
 (comment
  ;; REPL:
   (require '[vallum.harness :as h])
-  (h/run-checks)                          ; datos crudos
-  (h/run-fast!)                           ; feedback instantáneo
+  (h/run-checks)                          ; raw data
+  (h/run-fast!)                           ; instant feedback
   (h/run-security!)
   (h/run-one :lint/kondo)
   (h/print-report! (h/run-checks)))
