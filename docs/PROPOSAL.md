@@ -2,15 +2,19 @@
 
 > *Vallum* (latín): muralla, empalizada defensiva romana.
 
-**Estado:** Propuesta v0.2 — pendiente de aprobación. Sin código todavía.
+**Estado:** Propuesta v0.3 — aprobada tras review externo. Planning de
+arquitectura en `ARCHITECTURE.md`. Sin código todavía.
+
+**Disciplina de alcance:** v1 = M0–M5 y nada más. Los backends pf/Forti/Cisco
+y modos de ingesta adicionales quedan congelados hasta completar M5.
 
 ---
 
 ## 1. Pitch (2 líneas)
 
 Un DSL en Clojure que compila políticas de firewall de alto nivel a reglas
-verificables, y un formato de datos cerrado por el cual un agente IA
-(**cualquier LLM**, vía puente multi-proveedor) puede **responder a
+**validadas y reproducibles**, y un formato de datos cerrado por el cual un
+agente IA (**cualquier LLM**, vía puente multi-proveedor) puede **responder a
 incidentes** sin poder jamás salirse del campo de acción definido por el
 compilador.
 
@@ -219,8 +223,12 @@ Enforced por código, no por convención. Verificadas con tests generativos.
 | **I8** | Neutralidad de proveedor: ningún componente de seguridad depende del LLM. Todo modelo es intercambiable porque se le trata como no confiable; su única salida posible es EDN candidato que pasa por el validador. |
 
 **Prueba adversarial obligatoria (hito M2):** suite de ataques al sandbox —
-prompt injection vía logs, EDN malicioso, lectura-antes-de-evaluar, abuso de
-presupuesto. El sistema debe rechazarlos todos y dejar registro.
+claves/acciones desconocidas, EDN malformado, anidamiento inesperado,
+confusión de tipos, enteros gigantes, TTL negativo, NaN, campos duplicados,
+unicode hostil, strings sobredimensionados, tags inesperados, prompt
+injection vía logs. El sistema debe rechazarlos todos y dejar registro. El
+criterio: «abrí el puerto 22 a Internet» falla porque `:open-port` **no
+existe en el lenguaje**, no porque un filtro lo detecte.
 
 ## 6. Alcance
 
