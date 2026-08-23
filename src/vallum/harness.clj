@@ -214,7 +214,11 @@
    {:id :tests/manifest              :label "manifest tests"       :milestone :M3
     :fn #(check-named-test :tests/manifest "vallum.manifest-test")}
    {:id :tests/audit                 :label "audit tests"           :milestone :M3
-    :fn #(check-named-test :tests/audit "vallum.audit-test")}])
+    :fn #(check-named-test :tests/audit "vallum.audit-test")}
+   {:id :tests/ingest                :label "ingest tests"          :milestone :M4
+    :fn #(check-named-test :tests/ingest "vallum.ingest-test")}
+   {:id :tests/runtime               :label "runtime tests"         :milestone :M4
+    :fn #(check-named-test :tests/runtime "vallum.runtime-test")}])
 
 (defn select-checks
   "Filters the registry by selectors: a selector matches the full id

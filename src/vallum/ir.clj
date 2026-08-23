@@ -77,6 +77,15 @@
 (s/def :sandbox/spec (s/keys :req-un [:sandbox/actions :sandbox/default-ttl :sandbox/max-ttl :sandbox/max-active]))
 (s/def :ir/sandboxes (s/map-of keyword? :sandbox/spec))
 
+;; Events (alert ingestion, v1 NDJSON schema)
+(s/def :event/ts string?)
+(s/def :event/kind string?)
+(s/def :event/src-ip string?)
+(s/def :event/severity (s/int-in 0 11))
+(s/def :event/refs (s/coll-of string? :kind vector?))
+(s/def :event/spec (s/keys :req-un [:event/ts :event/kind :event/src-ip]
+                           :opt-un [:event/severity :event/refs]))
+
 ;; Dynamic rules produced by AI or ingest
 (s/def :dynamic/action #{:drop-ip :rate-limit})
 (s/def :dynamic/ip string?)
