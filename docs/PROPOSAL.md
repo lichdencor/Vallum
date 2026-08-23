@@ -88,6 +88,24 @@ los backends la consumen. Consecuencias directas:
 - El manifiesto para la IA no cambia entre plataformas.
 - Agregar un backend no toca el compilador ni el validador.
 
+**Principio de diseño: IR mínima con camino de crecimiento explícito.**
+
+- **v1 = lo básico:** direcciones/puertos inline, zonas, servicios,
+  allow/deny, contención. Nada más. Nada prematuro.
+- **Schema versionado:** todo manifiesto lleva `:ir/version`; los schemas
+  son cerrados (claves desconocidas ⇒ rechazo) y evolucionan solo por
+  versión explícita.
+- **Registry extensible de tipos de objeto:** los conceptos nuevos
+  (`:ir/named-object`, `:ir/service-group`, …) se registran sin tocar el
+  core del compilador ni el validador.
+- **Regla de admisión:** un concepto entra a la IR cuando (a) dos backends
+  lo saben expresar, o (b) nftables lo exige. Si solo un backend futuro lo
+  necesita, espera en el roadmap de ese backend.
+- **Path concreto:** cuando llegue el backend API-centrado (M7, FortiOS/
+  Cisco) que exige objetos direccionados, se registra `:ir/named-object` y
+  el compilador deriva automáticamente los objetos desde las direcciones
+  inline existentes — políticas viejas siguen compilando sin cambios.
+
 | Backend | Mecanismo dinámico | Encaje | Estado |
 |---|---|---|---|
 | **Linux nftables** | sets con `timeout` + namespace efímero | nativo — backend de referencia | **v1** |
@@ -125,6 +143,28 @@ Propiedades de diseño:
   u operador humano ocupan el mismo lugar. El runtime funciona igual.
 - **Comparabilidad:** mismo manifiesto + mismos eventos ⇒ benchmark justo
   entre modelos sobre tasa de propuestas válidas/rechazadas.
+
+### Ingesta de alertas (v1: un solo modo)
+
+**v1 soporta un único modo:** archivo de eventos propio en formato
+NDJSON (una línea = un evento), vigilado por el runtime.
+
+```json
+{"ts":"2026-08-22T20:14:59Z","kind":"ssh.bruteforce","src_ip":"203.0.113.66","severity":7,"refs":["alerta#4821"]}
+```
+
+Propiedades:
+
+- Schema cerrado validado en ingesta; línea malformada se rechaza y registra,
+  jamás tira el proceso.
+- **Vallum no lee logs crudos.** Consume un canal curado por el operador:
+  quien despliega decide qué eventos existen y puede imponer restricciones
+  mayores *externamente* por compliance (filtrado/agregación upstream,
+  enriquecimiento controlado) y *internamente* vía budgets del sandbox en su
+  `policy.lisp`. El contrato de eventos es auditable por sí solo.
+- Modos futuros (action de fail2ban, journald, webhook HTTP) entran como
+  adaptadores del mismo patrón del puente IA: contrato fijo, fuente
+  intercambiable. Fuera de alcance v1.
 
 ### Boceto del DSL
 
@@ -266,7 +306,8 @@ Los hitos M0–M5 constituyen v1 (nftables). Post-v1:
 ## 9. Escenario demo final («el momento dinero»)
 
 1. Host demo: web pública + SSH.
-2. Script simula brute-force SSH → alimenta alertas al runtime.
+2. Script simula brute-force SSH → escribe eventos NDJSON al archivo de
+   ingesta.
 3. El adaptador Gemini propone `drop-ip` con TTL → validador aprueba → se
    aplica → expira.
 4. **Ataque 2:** alerta envenenada con prompt injection que pide «abrir puerto
@@ -283,8 +324,12 @@ Los hitos M0–M5 constituyen v1 (nftables). Post-v1:
 - [x] Distribución: **GraalVM como JDK desde M0 (modo JIT)**, native-image
       verificado en CI desde M2, metadatos de reflexión incrementales;
       artefacto final según disparadores (§7.1).
+- [x] Ingesta de alertas v1: **archivo NDJSON propio**, canal curado por el
+      operador (compliance-friendly); otros modos futuros como adaptadores.
+- [x] IR: **mínima en v1** (nft-like, direcciones inline) con schema
+      versionado y registry extensible de tipos; crecimiento por regla de
+      admisión explícita (§4).
 
-## 11. Preguntas abiertas (decidir antes de M1)
+## 11. Preguntas abiertas
 
-- [ ] Mecanismo de ingesta de alertas v1: fail2ban, logs crudos o archivo de eventos propio.
-- [ ] ¿Diseñar la IR ya con conceptos API-centrados en mente (objetos direccionados) o estrictamente nft-like en v1?
+Ninguna. La propuesta está lista para arrancar M0.
