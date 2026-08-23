@@ -37,8 +37,11 @@ jobs:
         run: clojure -M:fmt check src test
       - name: Unit tests + generative + adversarial + architecture
         run: clojure -M:test
+      - name: Install trivy
+        run: ./bin/install-trivy.sh
       - name: Harness (full)
-        run: clojure -M:harness all
+        shell: bash
+        run: set -o pipefail; clojure -M:harness all 2>&1 | tee "$GITHUB_STEP_SUMMARY"
 
   native:
     runs-on: ubuntu-latest
