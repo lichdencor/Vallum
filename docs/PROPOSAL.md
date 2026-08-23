@@ -205,8 +205,9 @@ presupuesto. El sistema debe rechazarlos todos y dejar registro.
 
 ## 7. Stack
 
-- **Clojure (JVM)** para desarrollo del compilador; evaluación de
-  **GraalVM native-image** o **Babashka** al cierre para distribución ligera.
+- **GraalVM como JDK del proyecto desde M0** (modo JIT para desarrollo);
+  native-image compilado y testeado en CI desde M2. Ponderación completa en
+  §7.1.
 - `clojure.spec` — schemas e invariantes.
 - `test.check` — **tests generativos**: políticas arbitrarias deben cumplir I0–I8 siempre.
 - `cheshire` — JSON.
@@ -214,13 +215,43 @@ presupuesto. El sistema debe rechazarlos todos y dejar registro.
   primero, Ollama como opción offline.
 - Demo: VM/container Debian con nftables.
 
+### 7.1 Ponderación JVM vs GraalVM native-image → decisión: GraalVM desde el inicio
+
+El mismo código Clojure corre en ambos mundos. La distinción clave es que
+GraalVM tiene **dos modos**: JIT (es un JDK más, desarrollo idéntico a JVM
+estándar) y native-image/AOT (el modo restringido donde viven las
+restricciones de reflexión). Eso permite una estrategia híbrida:
+
+- **Desde M0:** GraalVM como JDK del proyecto (modo JIT) — experiencia de
+  desarrollo idéntica a JVM estándar, cero costo diario.
+- **Desde M2:** job de CI que compila native-image y corre la suite de tests
+  sobre el binario. Los metadatos de reflexión (`reachability-metadata`,
+  `clj-easy/graal-build-time`) se mantienen **incrementalmente** con cada
+  dependencia, nunca como big-bang tardío.
+- **Artefacto de distribución:** fat-jar por defecto hasta que un disparador
+  objetivo pida publicar el binario nativo — que ya existirá, probado en CI.
+
+Peso de las diferencias (para contexto de la decisión):
+
+| Dimensión | JVM fat-jar | GraalVM native | Resolución con la estrategia híbrida |
+|---|---|---|---|
+| RAM en reposo (daemon) | 150–300 MB | 20–50 MB | Binario nativo disponible cuando haga falta |
+| Distribución | Requiere JRE (~200 MB) | Binario único | Idem |
+| Loop dev/build | Segundos | Minutos + config | Dev en modo JIT: costo nulo |
+| Compatibilidad | Total | Casos borde (spec/Jackson) | Detectados en CI desde M2, no al final |
+
+**Disparadores para publicar el binario nativo como artefacto principal:**
+- distribución a terceros («binario único»), o
+- deployment en hardware limitado (<1 GB RAM: routers, SBCs);
+- alternativa intermedia si solo molesta el tamaño: **jlink** (~50 MB).
+
 ## 8. Hitos demostrables
 
 | Hito | Entregable | Criterio de aceptación |
 |------|-----------|------------------------|
 | **M0** | Repo + estructura deps.edn | `clojure -M:dev` corre tests vacíos |
 | **M1** | DSL core + compilador | Genera `ruleset.nft` válido; `nft -c` lo acepta |
-| **M2** | Validador + invariantes I0–I8 | Suite adversarial pasa; tests generativos verdes |
+| **M2** | Validador + invariantes I0–I8 | Suite adversarial pasa; tests generativos verdes; **build nativo verde en CI** |
 | **M3** | Emisor manifest + auditoría semántica | Detecta reglas sombreadas en fixture conocido |
 | **M4** | Runtime (apply, TTL, drift) | Regla dinámica expira sola; drift reportado ante cambio manual |
 | **M5** | Puente IA (adaptador Gemini + stub offline) | Demo E2E: ataque simulado → contención automática → expiry |
@@ -249,9 +280,11 @@ Los hitos M0–M5 constituyen v1 (nftables). Post-v1:
 - [x] Clojure como lenguaje (vs Common Lisp).
 - [x] Puente IA multi-proveedor con protocolo de adaptadores; Gemini primero,
       Ollama opcional offline.
+- [x] Distribución: **GraalVM como JDK desde M0 (modo JIT)**, native-image
+      verificado en CI desde M2, metadatos de reflexión incrementales;
+      artefacto final según disparadores (§7.1).
 
 ## 11. Preguntas abiertas (decidir antes de M1)
 
-- [ ] Distribución final: JVM fat-jar vs GraalVM vs Babashka.
 - [ ] Mecanismo de ingesta de alertas v1: fail2ban, logs crudos o archivo de eventos propio.
 - [ ] ¿Diseñar la IR ya con conceptos API-centrados en mente (objetos direccionados) o estrictamente nft-like en v1?
