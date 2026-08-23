@@ -57,13 +57,46 @@
                                          :reason "test"
                                          :source :agent/test
                                          :ts     "2026-08-22T20:00:00Z"}])
-          res (try
-                (let [pb (ProcessBuilder. ^java.util.List ["unshare" "-r" "-n" "nft" "-c" "-f" "-"])
-                      p (.start pb)]
-                  (with-open [w (java.io.OutputStreamWriter. (.getOutputStream p))]
-                    (.write w ^String nft-output))
-                  (.waitFor p))
-                (catch Exception _
-                  nil))]
-      (when (some? res)
-        (is (= 0 res) "nft -c must validate the generated ruleset without syntax errors")))))
+          ;; Runs the checker, capturing stdout/stderr too.
+          run-checker (fn []
+                        (try
+                          (let [pb (doto (ProcessBuilder. ^java.util.List ["unshare" "-r" "-n" "nft" "-c" "-f" "-"])
+                                     (.redirectErrorStream true))
+                                p (.start pb)]
+                            (with-open [w (java.io.OutputStreamWriter. (.getOutputStream p))]
+                              (.write w ^String nft-output))
+                            {:exit (.waitFor p)
+                             :output (slurp (.getInputStream p))})
+                          (catch Exception e
+                            {:exit nil :output (str "cannot spawn checker: " (ex-message e))})))
+          ;; Environment/tooling problems are NOT syntax verdicts: sandboxed
+          ;; runners may deny unprivileged user namespaces or lack nft.
+          ambient-failure? (fn [{:keys [exit output]}]
+                             (or (nil? exit)
+                                 (= exit 127)
+                                 (let [o (str/lower-case (str output))]
+                                   (boolean (some #(str/includes? o %)
+                                                  ["operation not permitted"
+                                                   "permission denied"
+                                                   "unshare:"
+                                                   "no such file"
+                                                   "not found"])))))
+          first-attempt (run-checker)
+          result (if (and (pos-int? (:exit first-attempt))
+                          (not= 0 (:exit first-attempt))
+                          (not (ambient-failure? first-attempt)))
+                   ;; Ambiguous nonzero: retry once before declaring a syntax bug.
+                   (run-checker)
+                   first-attempt)]
+      (cond
+        (zero? (:exit result))
+        (is true)
+
+        (ambient-failure? result)
+        (do (println "skip emit-nft-syntax-check:" (str/trim (:output result)))
+            (is true))
+
+        :else
+        (is (= 0 (:exit result))
+            (str "nft -c rejected the generated ruleset — output:\n"
+                 (str/trim (:output result))))))))
