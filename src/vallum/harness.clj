@@ -218,7 +218,9 @@
    {:id :tests/ingest                :label "ingest tests"          :milestone :M4
     :fn #(check-named-test :tests/ingest "vallum.ingest-test")}
    {:id :tests/runtime               :label "runtime tests"         :milestone :M4
-    :fn #(check-named-test :tests/runtime "vallum.runtime-test")}])
+    :fn #(check-named-test :tests/runtime "vallum.runtime-test")}
+   {:id :tests/bridge                 :label "bridge tests"          :milestone :M5
+    :fn #(check-subdir-suite :tests/bridge :bridge :M5)}])
 
 (defn select-checks
   "Filters the registry by selectors: a selector matches the full id
