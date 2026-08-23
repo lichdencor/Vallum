@@ -41,7 +41,14 @@ jobs:
         run: ./bin/install-trivy.sh
       - name: Harness (full)
         shell: bash
-        run: set -o pipefail; clojure -M:harness all 2>&1 | tee "$GITHUB_STEP_SUMMARY"
+        run: |
+          set -o pipefail
+          status=0
+          clojure -M:harness all > /tmp/harness.log 2>&1 || status=$?
+          # Surface failures as public check annotations
+          grep -E '^❌|^    ' /tmp/harness.log | head -40 | sed 's/^/::error message=/' || true
+          cat /tmp/harness.log | tee "$GITHUB_STEP_SUMMARY"
+          exit $status
 
   native:
     runs-on: ubuntu-latest
