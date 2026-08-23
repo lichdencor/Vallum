@@ -1,0 +1,13 @@
+# Clojure
+.cpcache/
+.lsp/.cache/
+.clj-kondo/.cache/
+.nrepl-port
+
+# Build
+target/
+classes/
+*.jar
+
+# Entorno
+.DS_Store

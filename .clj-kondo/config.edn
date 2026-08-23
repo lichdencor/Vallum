@@ -1,0 +1,11 @@
+{:linters
+ {:unused-binding        {:level :warning}
+  :unused-namespace      {:level :warning}
+  :deprecated-var        {:level :warning}
+  :unresolved-symbol     {:level :error}
+  :unresolved-namespace  {:level :error}
+  :duplicate-binding     {:level :error}
+  :redefined-var         {:level :warning}
+  :single-arg-let        {:level :warning}
+  :unnecessary-doall     {:level :warning}
+  :condition-always-true {:level :warning}}}

@@ -79,16 +79,18 @@ El código vive en `src/`; el resto del repo aloja artefactos, CI y tooling:
 
 ```
 Vallum/
-├── docs/                    # propuesta, arquitectura, ADRs futuros
+├── docs/                    # propuesta, arquitectura, harness, ADRs futuros
 ├── src/vallum/              # código fuente (mapa §2)
-├── test/vallum/             # tests unitarios
+├── test/vallum/             # tests unitarios + arquitectura/convenciones
 │   ├── generative/          # test.check: invariantes bajo inputs arbitrarios
 │   └── adversarial/         # suite de ataques al sandbox (ver §6)
+├── dev/                     # user.clj: utilidades de REPL
+├── bin/                     # install-trivy.sh, install-git-hooks.sh, hooks/
 ├── examples/                # políticas .lisp de ejemplo y fixtures de IR
 ├── demo/                    # escenario E2E: script de ataque, VM/container
 ├── .github/workflows/       # CI: JIT matrix + job native-image (desde M2)
-├── .pre-commit-config.yaml  # clj-kondo (lint) + cljfmt (formato)
-├── deps.edn                 # aliases: :dev :test :native
+├── .pre-commit-config.yaml  # harness fast (kondo/cljfmt/tests) + trivy + convención de commits
+├── deps.edn                 # aliases: :repl :test :kondo :fmt :harness :native
 └── README.md                # cuando exista algo que documentar
 ```
 
@@ -100,6 +102,11 @@ Vallum/
 | Generativa | `test.check` | I0–I8 se cumplen para políticas/reglas **arbitrarias** | M2 |
 | Adversarial | fixtures hostiles fijos | rechazo explícito y auditado de ataques | M2 |
 | E2E | demo/ + VM container | flujo completo ataque→contención→expiry | M5 |
+
+La orquestación de todas las capas vive en el **harness** (`vallum.harness`,
+documentación en `docs/HARNESS.md`): registro único de checks con gating por
+hito, ejecutable desde REPL, CLI y pre-commit. Las reglas de dependencia de
+§4 están enforceadas como tests en `test/vallum/architecture_test.clj`.
 
 **Suite adversarial mínima (M2)** — clases de ataque, todas deben terminar en
 rechazo + registro de auditoría:
