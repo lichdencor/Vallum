@@ -184,6 +184,17 @@
       (doseq [ns nss] (require ns))
       (test-summary->status id (name subdir) (apply t/run-tests nss)))))
 
+(defn- check-named-test
+  "Runs a single test namespace by fully-qualified name string."
+  [id ns-name]
+  (println "🔬" (name id) "...")
+  (try
+    (require (symbol ns-name))
+    (let [summary (t/run-tests (symbol ns-name))]
+      (test-summary->status id ns-name summary))
+    (catch Exception e
+      (result id ::fail (str "failed to load " ns-name) (ex-message e)))))
+
 ;; ---- Check registry -----------------------------------------------------
 
 (def registry
@@ -199,7 +210,11 @@
    {:id :tests/generative            :label "generative tests"      :milestone :M2
     :fn #(check-subdir-suite :tests/generative :generative :M2)}
    {:id :tests/adversarial           :label "adversarial suite"     :milestone :M2
-    :fn #(check-subdir-suite :tests/adversarial :adversarial :M2)}])
+    :fn #(check-subdir-suite :tests/adversarial :adversarial :M2)}
+   {:id :tests/manifest              :label "manifest tests"       :milestone :M3
+    :fn #(check-named-test :tests/manifest "vallum.manifest-test")}
+   {:id :tests/audit                 :label "audit tests"           :milestone :M3
+    :fn #(check-named-test :tests/audit "vallum.audit-test")}])
 
 (defn select-checks
   "Filters the registry by selectors: a selector matches the full id

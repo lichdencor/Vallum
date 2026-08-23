@@ -10,4 +10,4 @@
   {:name  "vallum"
    :major 0
    :minor 1
-   :phase :M2})
+   :phase :M3})
