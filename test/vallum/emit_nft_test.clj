@@ -89,12 +89,13 @@
                    (run-checker)
                    first-attempt)]
       (cond
-        (zero? (:exit result))
-        (is true)
-
+        ;; Environment/tooling problems first: :exit may be nil here.
         (ambient-failure? result)
         (do (println "skip emit-nft-syntax-check:" (str/trim (:output result)))
             (is true))
+
+        (zero? (:exit result))
+        (is true)
 
         :else
         (is (= 0 (:exit result))
