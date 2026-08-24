@@ -37,4 +37,4 @@
 
 (deftest phases-are-ranked
   (is (< (h/phase-rank :M0) (h/phase-rank :M5)))
-  (is (contains? #{:M0 :M1 :M2 :M3 :M4 :M5} (h/current-phase))))
+  (is (contains? #{:M0 :M1 :M2 :M3 :M4 :M5 :M6} (h/current-phase))))

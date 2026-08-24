@@ -6,7 +6,8 @@
 planning in `ARCHITECTURE.md`. No code yet.
 
 **Scope discipline:** v1 = M0–M5 and nothing more. The pf/Forti/Cisco backends
-and additional ingestion modes stay frozen until M5 is complete.
+and additional ingestion modes stay frozen until M5 is complete. M6 reorients
+to native binary CLI; M7 to the external agent SDK (Python/Go).
 
 ---
 
@@ -305,8 +306,8 @@ Milestones M0–M5 constitute v1 (nftables). Post-v1:
 
 | Milestone | Deliverable | Acceptance criteria |
 |------|-----------|------------------------|
-| **M6** | pf backend | The same policy compiles to `pf.conf` with anchors; demo on OpenBSD/FreeBSD |
-| **M7** | API backend (FortiOS or IOS/ASA) | Contention applied and expired via API in lab |
+| **M6** | Native binary CLI | `load-state` replays journal across processes; `vallum apply|expire|drift|status` work as standalone invocations; GraalVM native-image builds in CI |
+| **M7** | Agent SDK (Python/Go) | Agent repo consumes the native binary; `validate|propose|apply` orchestrated from external process with JSON I/O |
 
 ## 9. Final demo scenario ("the money moment")
 

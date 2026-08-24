@@ -9,8 +9,8 @@
     (is (contains? system/version k) (str "missing key " k))))
 
 (deftest phase-within-documented-milestones
-  (is (contains? #{:M0 :M1 :M2 :M3 :M4 :M5} (:phase system/version))
-      "the phase must be an M0–M5 milestone from docs/PROPOSAL.md §8"))
+  (is (contains? #{:M0 :M1 :M2 :M3 :M4 :M5 :M6} (:phase system/version))
+      "the phase must be a milestone from docs/PROPOSAL.md §8"))
 
 (deftest project-name
   (is (= "vallum" (:name system/version))))
