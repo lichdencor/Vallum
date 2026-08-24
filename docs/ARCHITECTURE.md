@@ -129,6 +129,8 @@ detects it.
 | M3 | `manifest`, `audit` | shadows detected in fixture |
 | M4 | `ingest`, `runtime` | TTL expires; drift reported |
 | M5 | `bridge.*`, E2E demo | full money moment |
+| M6 | `runtime` (load-state), `cli` (ops subcommands) | journal replay across processes; `vallum apply/expire/drift/status` work standalone |
+| M7 | agent SDK repo (Python/Go) | agent consumes native binary via JSON CLI |
 
 Scope discipline (review): **M0–M5 and absolutely nothing more.** No pf,
 no Forti/Cisco, no webhooks, no journald before M5.
