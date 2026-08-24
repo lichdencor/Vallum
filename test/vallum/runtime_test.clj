@@ -6,6 +6,13 @@
             [cheshire.core :as json]
             [vallum.runtime :as rt]))
 
+(defn cleanup-journals [_]
+  (doseq [f (.listFiles (java.io.File. "/tmp"))
+          :when (re-find #"vallum-journal" (.getName f))]
+    (try (.delete f) (catch Exception _))))
+
+(use-fixtures :each cleanup-journals)
+
 ;; ---- Mock Nftables backend ---------------------------------------------------
 
 (defrecord CallLog [calls]
@@ -222,3 +229,77 @@
   (doseq [f (.listFiles (java.io.File. "/tmp"))
           :when (re-find #"vallum-journal" (.getName f))]
     (.delete f)))
+
+;; ---- load-state --------------------------------------------------------------
+
+(deftest load-state-missing-file-returns-fresh
+  (let [state (rt/load-state "/nonexistent/path/journal.jsonl")]
+    (is (empty? (:active-rules @state)))
+    (is (nil? (:expected-hash @state)))
+    (is (= "/nonexistent/path/journal.jsonl" (:journal-path @state)))))
+
+(deftest load-state-empty-file-returns-fresh
+  (let [tmp-file (str (java.io.File/createTempFile "vallum-journal" ".jsonl"))
+        _ (.createNewFile (java.io.File. tmp-file))
+        state (rt/load-state tmp-file)]
+    (is (empty? (:active-rules @state)))
+    (is (nil? (:expected-hash @state)))))
+
+(deftest journal-replay-restores-active-rules
+  (let [tmp-file (str (java.io.File/createTempFile "vallum-journal" ".jsonl"))
+        state1 (rt/init-state tmp-file)
+        backend (mock-backend)
+        _ (rt/add-dynamic-rule! state1 backend sample-rule :containment sample-sandbox)
+        _ (rt/add-dynamic-rule! state1 backend (assoc sample-rule :ip "[IP2]") :containment sample-sandbox)
+        state2 (rt/load-state tmp-file)
+        ids1 (set (keys (:active-rules @state1)))
+        ids2 (set (keys (:active-rules @state2)))]
+    (is (= ids1 ids2) "Same rule IDs")
+    (is (every? #(= (get-in @state1 [:active-rules % :expires-at])
+                    (get-in @state2 [:active-rules % :expires-at]))
+                ids1) "Same expiration times")
+    (is (every? #(= :drop-ip (get-in @state2 [:active-rules % :rule :action]))
+                ids1) "Action restored as keyword")
+    (is (every? #(= :containment (get-in @state2 [:active-rules % :sandbox-id]))
+                ids1) "Sandbox-id restored as keyword")))
+
+(deftest journal-replay-handles-removal
+  (let [tmp-file (str (java.io.File/createTempFile "vallum-journal" ".jsonl"))
+        state1 (rt/init-state tmp-file)
+        backend (mock-backend)
+        _ (rt/add-dynamic-rule! state1 backend sample-rule :containment sample-sandbox)
+        rule-id (-> @state1 :active-rules keys first)
+        _ (rt/remove-dynamic-rule! state1 backend rule-id)
+        state2 (rt/load-state tmp-file)]
+    (is (empty? (:active-rules @state2)) "Rule removed in replay")))
+
+(deftest journal-replay-handles-expiry
+  (let [tmp-file (str (java.io.File/createTempFile "vallum-journal" ".jsonl"))
+        state1 (rt/init-state tmp-file)
+        backend (mock-backend)
+        _ (rt/add-dynamic-rule! state1 backend sample-rule :containment sample-sandbox)]
+    (binding [rt/*clock* (fn [] Long/MAX_VALUE)]
+      (rt/expire-due-rules! state1 backend))
+    (let [state2 (rt/load-state tmp-file)]
+      (is (empty? (:active-rules @state2)) "Expired rule replayed as empty"))))
+
+(deftest journal-replay-restores-expected-hash
+  (let [tmp-file (str (java.io.File/createTempFile "vallum-journal" ".jsonl"))
+        state1 (rt/init-state tmp-file)
+        backend (mock-backend)
+        _ (rt/apply-policy! state1 backend "table inet vallum { }")
+        hash1 (:expected-hash @state1)
+        state2 (rt/load-state tmp-file)]
+    (is (= hash1 (:expected-hash @state2)) "Hash restored from journal")))
+
+(deftest journal-replay-skips-garbled-lines
+  (let [tmp-file (str (java.io.File/createTempFile "vallum-journal" ".jsonl"))
+        state1 (rt/init-state tmp-file)
+        backend (mock-backend)
+        _ (rt/add-dynamic-rule! state1 backend sample-rule :containment sample-sandbox)]
+    ;; Corrupt the journal by appending garbage
+    (spit tmp-file "\nnot-json-line\n" :append true)
+    (let [state2 (rt/load-state tmp-file)
+          ids1 (set (keys (:active-rules @state1)))
+          ids2 (set (keys (:active-rules @state2)))]
+      (is (= ids1 ids2) "Valid entries still loaded despite garbage"))))
