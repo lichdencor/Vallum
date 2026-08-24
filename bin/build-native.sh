@@ -14,7 +14,7 @@ echo ""
 echo "--- AOT compile vallum.cli ---"
 mkdir -p target/classes
 clojure -M:native \
-  -e "(binding [*compile-path \"target/classes\"] (compile 'vallum.cli))"
+  -e "(binding [clojure.core/*compile-path* \"target/classes\"] (compile 'vallum.cli))"
 
 # 2. Build the native image
 echo "--- native-image ---"
