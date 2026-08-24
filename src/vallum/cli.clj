@@ -12,6 +12,7 @@
             [vallum.manifest :as manifest]
             [vallum.ingest :as ingest]
             [vallum.bridge.protocol :as bp]
+            [vallum.bridge.stub :as stub]
             [vallum.system :as system])
   (:import [java.io PushbackReader])
   (:gen-class))
@@ -130,8 +131,7 @@
               m (manifest/make-manifest ir)
               proposals (case adapter-name
                           "stub"
-                          (let [stub-adapter (requiring-resolve 'vallum.bridge.stub/make-stub-adapter)]
-                            (bp/generate-proposals (stub-adapter m events) m events identity))
+                          (bp/generate-proposals (stub/make-stub-adapter m events) m events identity)
                           "gemini"
                           (let [api-key (System/getenv "VALLUM_GEMINI_KEY")]
                             (if-not api-key
