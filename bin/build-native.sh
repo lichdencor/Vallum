@@ -10,11 +10,23 @@ echo "Version: $VERSION"
 echo "Output:  $OUTPUT_DIR/$APP_NAME"
 echo ""
 
-# 1. AOT compile the main namespace
-echo "--- AOT compile vallum.cli ---"
+# 1. AOT compile all namespaces reachable from cli
+echo "--- AOT compile ---"
 mkdir -p target/classes
 clojure -M:native \
-  -e "(binding [clojure.core/*compile-path* \"target/classes\"] (compile 'vallum.cli))"
+  -e "(binding [clojure.core/*compile-path* \"target/classes\"]
+       (doseq [sym '[vallum.cli
+                     vallum.compile
+                     vallum.dsl
+                     vallum.ir
+                     vallum.emit.nft
+                     vallum.validate
+                     vallum.runtime
+                     vallum.manifest
+                     vallum.ingest
+                     vallum.bridge.protocol
+                     vallum.bridge.stub]]
+         (compile sym)))"
 
 # 2. Build the native image
 echo "--- native-image ---"
