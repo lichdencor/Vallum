@@ -101,15 +101,51 @@
           :expected-hash nil
           :journal-path  journal-path})))
 
+(defn load-state
+  "Replays the journal file to reconstruct runtime state.
+  Returns an atom with the same shape as init-state.
+  If the journal file does not exist or is empty, returns a fresh state."
+  ([] (load-state "/var/log/vallum/journal.jsonl"))
+  ([journal-path]
+   (let [state-atom (init-state journal-path)]
+     (try
+       (with-open [rdr (io/reader journal-path)]
+         (doseq [line (line-seq rdr)]
+           (when-let [entry (try (json/parse-string (str/trim line) true)
+                                 (catch Exception _))]
+             (case (keyword (:event entry))
+               :rule-added
+               (let [rule-id (:rule-id entry)]
+                 (swap! state-atom assoc-in [:active-rules rule-id]
+                        {:rule {:action (keyword (:action entry))
+                                :ip (:ip entry)
+                                :ttl (:ttl entry)}
+                         :sandbox-id (keyword (:sandbox-id entry))
+                         :expires-at (:expires-at entry)}))
+               :rule-removed
+               (swap! state-atom update :active-rules dissoc (:rule-id entry))
+               :rule-expired
+               (swap! state-atom update :active-rules dissoc (:rule-id entry))
+               :policy-applied
+               (swap! state-atom assoc :expected-hash (:hash entry))
+               nil))))
+       (catch java.io.FileNotFoundException _))
+     state-atom)))
+
 ;; ---- Policy apply -----------------------------------------------------------
+
+(declare write-journal!)
 
 (defn apply-policy!
   "Applies a full nftables ruleset and records its hash for drift detection.
-  Returns the backend result map."
+   Also journals the hash for cross-process replay via load-state.
+   Returns the backend result map."
   [state-atom backend nft-text]
   (let [result (apply-ruleset! backend nft-text)]
     (when (:ok result)
-      (swap! state-atom assoc :expected-hash (sha256 nft-text)))
+      (let [hash (sha256 nft-text)]
+        (swap! state-atom assoc :expected-hash hash)
+        (write-journal! state-atom {:event :policy-applied :hash hash})))
     result))
 
 ;; ---- Dynamic rule management -------------------------------------------------
@@ -118,8 +154,6 @@
   "Parses a TTL string to seconds; returns nil if invalid."
   [ttl-str]
   (v/duration->seconds ttl-str))
-
-(declare write-journal!)
 
 (def ^:dynamic *clock*
   "Current time in milliseconds. Bind to override for testing.
